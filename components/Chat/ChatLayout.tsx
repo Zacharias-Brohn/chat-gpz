@@ -30,7 +30,6 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { chat, type ChatMessage } from '@/app/actions/chat';
 import { getInstalledModels, type OllamaModel } from '@/app/actions/ollama';
 import { useThemeContext } from '@/components/DynamicThemeProvider';
 import { SettingsModal } from '@/components/Settings/SettingsModal';
@@ -91,7 +90,8 @@ export default function ChatLayout() {
   // Model State
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [_isGenerating, setIsGenerating] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
 
   // Fetch chats and models on load
   useEffect(() => {
@@ -157,7 +157,9 @@ export default function ChatLayout() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !selectedModel) return;
+    if (!inputValue.trim() || !selectedModel) {
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -165,78 +167,114 @@ export default function ChatLayout() {
       content: inputValue,
     };
 
-    // Optimistic update
+    // Optimistic update - add user message and empty assistant message for streaming
+    const assistantMessageId = (Date.now() + 1).toString();
     const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    setMessages([...newMessages, { id: assistantMessageId, role: 'assistant', content: '' }]);
     setInputValue('');
     setIsGenerating(true);
+    setStreamingMessageId(assistantMessageId);
 
     try {
-      // Convert to format expected by server action
-      const chatHistory: ChatMessage[] = newMessages.map((m) => ({
+      // Convert to format expected by API
+      const chatHistory = newMessages.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       }));
 
-      // Call Ollama via Server Action
-      const result = await chat(selectedModel, chatHistory);
+      // Call streaming API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: chatHistory,
+        }),
+      });
 
-      if (result.success && result.message) {
-        const responseMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: result.message.content,
-        };
-        const finalMessages = [...newMessages, responseMessage];
-        setMessages(finalMessages);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get response');
+      }
 
-        // Save both user message and assistant response to database
-        try {
-          // Save user message
-          const userSaveRes = await fetch('/api/chats', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chatId: activeChatId,
-              messages: [userMessage],
-            }),
-          });
-          const userSaveData = await userSaveRes.json();
-          const savedChatId = userSaveData.chatId;
+      // Read the stream
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
 
-          // Update activeChatId if this was a new chat
-          if (!activeChatId && savedChatId) {
-            setActiveChatId(savedChatId);
-          }
+      const decoder = new TextDecoder();
+      let fullContent = '';
 
-          // Save assistant response
-          await fetch('/api/chats', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chatId: savedChatId,
-              messages: [responseMessage],
-            }),
-          });
-
-          // Refresh chat list
-          fetchChats();
-        } catch (saveError) {
-          console.error('Failed to save messages:', saveError);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
         }
-      } else {
-        // Error handling
-        const errorMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: `Error: ${result.error}`,
-        };
-        setMessages([...newMessages, errorMessage]);
+
+        const chunk = decoder.decode(value, { stream: true });
+        fullContent += chunk;
+
+        // Update the assistant message with accumulated content
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMessageId ? { ...m, content: fullContent } : m))
+        );
+      }
+
+      // Create final response message for saving
+      const responseMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: fullContent,
+      };
+
+      // Save both user message and assistant response to database
+      try {
+        // Save user message
+        const userSaveRes = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId: activeChatId,
+            messages: [userMessage],
+          }),
+        });
+        const userSaveData = await userSaveRes.json();
+        const savedChatId = userSaveData.chatId;
+
+        // Update activeChatId if this was a new chat
+        if (!activeChatId && savedChatId) {
+          setActiveChatId(savedChatId);
+        }
+
+        // Save assistant response
+        await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId: savedChatId,
+            messages: [responseMessage],
+          }),
+        });
+
+        // Refresh chat list
+        fetchChats();
+      } catch (saveError) {
+        console.error('Failed to save messages:', saveError);
       }
     } catch (e) {
       console.error('Failed to send message', e);
+      // Update assistant message with error
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMessageId
+            ? { ...m, content: `Error: ${e instanceof Error ? e.message : 'Unknown error'}` }
+            : m
+        )
+      );
     } finally {
       setIsGenerating(false);
+      setStreamingMessageId(null);
     }
   };
 
@@ -373,7 +411,10 @@ export default function ChatLayout() {
                       }}
                     >
                       {message.role === 'assistant' ? (
-                        <MarkdownMessage content={message.content} />
+                        <MarkdownMessage
+                          content={message.content}
+                          isStreaming={message.id === streamingMessageId}
+                        />
                       ) : (
                         <Text size="sm" style={{ lineHeight: 1.6 }}>
                           {message.content}

@@ -4,9 +4,10 @@ import classes from './MarkdownMessage.module.css';
 
 interface MarkdownMessageProps {
   content: string;
+  isStreaming?: boolean;
 }
 
-export function MarkdownMessage({ content }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessageProps) {
   return (
     <div className={classes.markdown}>
       <ReactMarkdown
@@ -31,7 +32,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
               {children}
             </Title>
           ),
-          code: ({ className, children, ...props }) => {
+          code: ({ className, children }) => {
             const isInline = !className;
             if (isInline) {
               return <Code>{children}</Code>;
@@ -74,6 +75,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
       >
         {content}
       </ReactMarkdown>
+      {isStreaming && <span className={classes.streamingCursor} />}
     </div>
   );
 }
