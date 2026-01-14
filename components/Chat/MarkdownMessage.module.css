@@ -62,3 +62,11 @@
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+/* Tables with rounded corners */
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--mantine-radius-md);
+  overflow: hidden;
+}

@@ -226,7 +226,14 @@ export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessag
 
           // Tables (GFM)
           table: ({ children }) => (
-            <Table striped highlightOnHover withTableBorder withColumnBorders mb="md">
+            <Table
+              striped
+              highlightOnHover
+              withTableBorder
+              withColumnBorders
+              mb="md"
+              className={classes.table}
+            >
               {children}
             </Table>
           ),
