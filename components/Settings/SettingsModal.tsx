@@ -1,22 +1,53 @@
 import { useEffect, useState } from 'react';
-import { IconAlertCircle, IconPalette, IconUser, IconX } from '@tabler/icons-react';
+import {
+  IconAlertCircle,
+  IconDownload,
+  IconPalette,
+  IconRobot,
+  IconTrash,
+  IconUser,
+  IconX,
+} from '@tabler/icons-react';
 import {
   ActionIcon,
   Alert,
+  Badge,
   Button,
+  Card,
   ColorSwatch,
+  Combobox,
   Divider,
   Group,
+  Input,
+  InputBase,
+  Loader,
   Modal,
   NavLink,
   PasswordInput,
   rem,
+  ScrollArea,
   Stack,
   Text,
   TextInput,
   Title,
+  useCombobox,
   useMantineTheme,
 } from '@mantine/core';
+import { deleteModel, getInstalledModels, pullModel, type OllamaModel } from '@/app/actions/ollama';
+
+const POPULAR_MODELS = [
+  'llama3.2',
+  'llama3.1',
+  'mistral',
+  'gemma2',
+  'qwen2.5',
+  'phi3.5',
+  'neural-chat',
+  'starling-lm',
+  'codellama',
+  'deepseek-coder',
+  'llava',
+];
 
 interface User {
   id: string;
@@ -37,7 +68,7 @@ export function SettingsModal({
   setPrimaryColor,
 }: SettingsModalProps) {
   const theme = useMantineTheme();
-  const [activeTab, setActiveTab] = useState<'appearance' | 'account'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'account' | 'models'>('appearance');
 
   // Account State
   const [user, setUser] = useState<User | null>(null);
@@ -47,12 +78,45 @@ export function SettingsModal({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Models State
+  const [models, setModels] = useState<OllamaModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [pullingModel, setPullingModel] = useState<string | null>(null);
+  const [newModelName, setNewModelName] = useState('');
+
+  // Combobox State
+  const [search, setSearch] = useState('');
+  const combobox = useCombobox({
+    onDropdownClose: () => {
+      combobox.resetSelectedOption();
+      combobox.focusTarget();
+      setSearch('');
+    },
+    onDropdownOpen: () => {
+      combobox.focusSearchInput();
+    },
+  });
+
+  const [value, setValue] = useState<string | null>(null);
+
+  // Filter installed models based on search
+  const options = models
+    .filter((item) => item.name.toLowerCase().includes(search.toLowerCase().trim()))
+    .map((item) => (
+      <Combobox.Option value={item.name} key={item.digest}>
+        {item.name}
+      </Combobox.Option>
+    ));
+
   // Check login status on mount
   useEffect(() => {
     if (opened) {
       fetchUser();
+      if (activeTab === 'models') {
+        fetchModels();
+      }
     }
-  }, [opened]);
+  }, [opened, activeTab]);
 
   const fetchUser = async () => {
     try {
@@ -63,6 +127,46 @@ export function SettingsModal({
       } else {
         setUser(null);
       }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchModels = async () => {
+    setLoadingModels(true);
+    try {
+      const list = await getInstalledModels();
+      setModels(list);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  const handlePullModel = async () => {
+    if (!newModelName) return;
+    setPullingModel(newModelName);
+    try {
+      const result = await pullModel(newModelName);
+      if (result.success) {
+        setNewModelName('');
+        await fetchModels();
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPullingModel(null);
+    }
+  };
+
+  const handleDeleteModel = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+    try {
+      await deleteModel(name);
+      await fetchModels();
     } catch (e) {
       console.error(e);
     }
@@ -136,6 +240,15 @@ export function SettingsModal({
             style={{ borderRadius: 'var(--mantine-radius-lg)' }}
           />
           <NavLink
+            active={activeTab === 'models'}
+            label="Models"
+            leftSection={<IconRobot size={18} stroke={1.5} />}
+            variant="light"
+            color={primaryColor}
+            onClick={() => setActiveTab('models')}
+            style={{ borderRadius: 'var(--mantine-radius-lg)' }}
+          />
+          <NavLink
             active={activeTab === 'account'}
             label="Account"
             leftSection={<IconUser size={18} stroke={1.5} />}
@@ -186,6 +299,128 @@ export function SettingsModal({
                   ))}
                 </Group>
               </Stack>
+            </>
+          )}
+
+          {activeTab === 'models' && (
+            <>
+              <Title order={4}>Models</Title>
+              <Text size="sm" c="dimmed">
+                Manage your local AI models via Ollama.
+              </Text>
+              <Divider my="sm" />
+
+              <Group align="flex-end">
+                <Combobox
+                  store={combobox}
+                  withinPortal={false}
+                  onOptionSubmit={(val) => {
+                    setNewModelName(val);
+                    combobox.closeDropdown();
+                    // Optional: trigger pull immediately or let user click button?
+                    // User code sample sets value. I'll set newModelName.
+                  }}
+                >
+                  <Combobox.Target>
+                    <InputBase
+                      component="button"
+                      type="button"
+                      pointer
+                      rightSection={<Combobox.Chevron />}
+                      onClick={() => combobox.toggleDropdown()}
+                      rightSectionPointerEvents="none"
+                      label="Download Model"
+                      description="Select an installed model to update, or type a new model name (e.g. llama3)"
+                      style={{ flex: 1 }}
+                    >
+                      {newModelName || (
+                        <Input.Placeholder>Pick or type model name</Input.Placeholder>
+                      )}
+                    </InputBase>
+                  </Combobox.Target>
+
+                  <Combobox.Dropdown>
+                    <Combobox.Search
+                      value={search}
+                      onChange={(event) => {
+                        setSearch(event.currentTarget.value);
+                        setNewModelName(event.currentTarget.value); // Allow typing new names
+                      }}
+                      placeholder="Search installed models or type new one"
+                    />
+                    <Combobox.Options>
+                      {options.length > 0 ? (
+                        options
+                      ) : (
+                        <Combobox.Empty>No matching installed models</Combobox.Empty>
+                      )}
+                    </Combobox.Options>
+                  </Combobox.Dropdown>
+                </Combobox>
+
+                <Button
+                  onClick={handlePullModel}
+                  loading={!!pullingModel}
+                  leftSection={<IconDownload size={16} />}
+                  color={primaryColor}
+                >
+                  Pull
+                </Button>
+              </Group>
+
+              {pullingModel && (
+                <Alert icon={<Loader size={16} />} title="Downloading..." color="blue" mt="md">
+                  Pulling {pullingModel}. This may take a while depending on your connection.
+                </Alert>
+              )}
+
+              <Text size="sm" fw={500} mt="xl" mb="xs">
+                Installed Models
+              </Text>
+
+              {loadingModels ? (
+                <Group justify="center" py="xl">
+                  <Loader size="sm" />
+                </Group>
+              ) : models.length === 0 ? (
+                <Text c="dimmed" size="sm" ta="center" py="xl">
+                  No models found. Try pulling one!
+                </Text>
+              ) : (
+                <ScrollArea h={300} offsetScrollbars>
+                  <Stack gap="xs">
+                    {models.map((model) => (
+                      <Card key={model.digest} withBorder padding="sm" radius="md">
+                        <Group justify="space-between">
+                          <div>
+                            <Text fw={500} size="sm">
+                              {model.name}
+                            </Text>
+                            <Group gap="xs">
+                              <Badge size="xs" variant="light" color="gray">
+                                {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB
+                              </Badge>
+                              <Badge size="xs" variant="light" color="blue">
+                                {model.details.parameter_size}
+                              </Badge>
+                              <Badge size="xs" variant="light" color="orange">
+                                {model.details.quantization_level}
+                              </Badge>
+                            </Group>
+                          </div>
+                          <ActionIcon
+                            color="red"
+                            variant="subtle"
+                            onClick={() => handleDeleteModel(model.name)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
+                      </Card>
+                    ))}
+                  </Stack>
+                </ScrollArea>
+              )}
             </>
           )}
 

@@ -20,6 +20,7 @@ import {
   Paper,
   rem,
   ScrollArea,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -29,6 +30,8 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { chat, type ChatMessage } from '@/app/actions/chat';
+import { getInstalledModels, type OllamaModel } from '@/app/actions/ollama';
 import { useThemeContext } from '@/components/DynamicThemeProvider';
 import { SettingsModal } from '@/components/Settings/SettingsModal';
 
@@ -66,10 +69,25 @@ export default function ChatLayout() {
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
 
-  // Fetch chats on load
+  // Model State
+  const [models, setModels] = useState<OllamaModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Fetch chats and models on load
   useEffect(() => {
     fetchChats();
-  }, [settingsOpened]); // Refresh when settings close (might have logged in/out)
+    fetchModels();
+  }, [settingsOpened]);
+
+  const fetchModels = async () => {
+    const list = await getInstalledModels();
+    setModels(list);
+    // Select first model if none selected and list not empty
+    if (!selectedModel && list.length > 0) {
+      setSelectedModel(list[0].name);
+    }
+  };
 
   const fetchChats = async () => {
     setIsLoadingChats(true);
@@ -98,7 +116,6 @@ export default function ChatLayout() {
     if (chat.messages) {
       setMessages(chat.messages);
     } else {
-      // In a real app we might fetch full messages here if not included in list
       setMessages([]);
     }
     if (mobileOpened) {
@@ -121,9 +138,7 @@ export default function ChatLayout() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) {
-      return;
-    }
+    if (!inputValue.trim() || !selectedModel) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -135,54 +150,38 @@ export default function ChatLayout() {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInputValue('');
+    setIsGenerating(true);
 
     try {
-      // Save to backend
-      const res = await fetch('/api/chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [userMessage],
-          chatId: activeChatId,
-        }),
-      });
+      // Convert to format expected by server action
+      const chatHistory: ChatMessage[] = newMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.chatId && data.chatId !== activeChatId) {
-          setActiveChatId(data.chatId);
-          fetchChats(); // Refresh list to show new chat
-        }
+      // Call Ollama via Server Action
+      const result = await chat(selectedModel, chatHistory);
 
-        // Simulate AI response
-        setTimeout(async () => {
-          const responseMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content:
-              'I am a simulated AI response. I do not have a backend yet. I just repeat that I am simulated.',
-          };
-
-          const updatedMessages = [...newMessages, responseMessage];
-          setMessages(updatedMessages);
-
-          // Save AI response to backend
-          try {
-            await fetch('/api/chats', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                messages: [responseMessage],
-                chatId: data.chatId || activeChatId,
-              }),
-            });
-          } catch (e) {
-            console.error(e);
-          }
-        }, 1000);
+      if (result.success && result.message) {
+        const responseMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: result.message.content,
+        };
+        setMessages([...newMessages, responseMessage]);
+      } else {
+        // Error handling
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `Error: ${result.error}`,
+        };
+        setMessages([...newMessages, errorMessage]);
       }
     } catch (e) {
-      console.error('Failed to save message', e);
+      console.error('Failed to send message', e);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -213,7 +212,18 @@ export default function ChatLayout() {
                 </ActionIcon>
               </Tooltip>
               <IconRobot size={28} stroke={1.5} color={theme.colors[primaryColor][6]} />
-              <Title order={3}>AI Chat</Title>
+              <Title order={3} mr="md">
+                AI Chat
+              </Title>
+              <Select
+                placeholder="Select Model"
+                data={models.map((m) => ({ value: m.name, label: m.name }))}
+                value={selectedModel}
+                onChange={setSelectedModel}
+                searchable
+                size="xs"
+                style={{ width: 200 }}
+              />
             </Group>
             <ActionIcon variant="subtle" color="gray" onClick={openSettings}>
               <IconSettings size={20} />
