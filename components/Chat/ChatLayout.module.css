@@ -14,3 +14,17 @@
 .chatScrollViewport {
   scroll-behavior: smooth;
 }
+
+/* Chat list item - cogwheel appears on hover */
+.chatListItem {
+  position: relative;
+}
+
+.chatListItem .cogwheel {
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.chatListItem:hover .cogwheel {
+  opacity: 1;
+}

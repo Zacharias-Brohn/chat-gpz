@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  IconDotsVertical,
   IconLayoutSidebar,
   IconMessage,
   IconPencil,
@@ -649,12 +648,12 @@ export default function ChatLayout() {
                       </Group>
                     ) : (
                       // Normal display mode with NavLink
-                      <Group key={chat.id} gap={0} wrap="nowrap">
+                      <div key={chat.id} className={classes.chatListItem}>
                         <NavLink
                           component="button"
                           active={activeChatId === chat.id}
                           color={primaryColor}
-                          variant="subtle"
+                          variant="light"
                           label={chat.title}
                           leftSection={
                             chat.pinned ? (
@@ -663,11 +662,47 @@ export default function ChatLayout() {
                               <IconMessage size={16} stroke={1.5} />
                             )
                           }
+                          rightSection={
+                            <Menu position="bottom-end" withArrow>
+                              <Menu.Target>
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="gray"
+                                  size="xs"
+                                  className={classes.cogwheel}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <IconSettings size={14} />
+                                </ActionIcon>
+                              </Menu.Target>
+                              <Menu.Dropdown>
+                                <Menu.Item
+                                  leftSection={<IconPencil size={14} />}
+                                  onClick={() => handleRenameChat(chat.id)}
+                                >
+                                  Rename
+                                </Menu.Item>
+                                <Menu.Item
+                                  leftSection={<IconPin size={14} />}
+                                  onClick={() => handlePinChat(chat.id)}
+                                >
+                                  {chat.pinned ? 'Unpin' : 'Pin'}
+                                </Menu.Item>
+                                <Menu.Divider />
+                                <Menu.Item
+                                  color="red"
+                                  leftSection={<IconTrash size={14} />}
+                                  onClick={() => handleRemoveChat(chat.id)}
+                                >
+                                  Remove
+                                </Menu.Item>
+                              </Menu.Dropdown>
+                            </Menu>
+                          }
                           onClick={() => handleSelectChat(chat)}
                           noWrap
                           styles={{
                             root: {
-                              flex: 1,
                               minWidth: 0,
                               borderRadius: 'var(--mantine-radius-sm)',
                               padding: '6px 10px',
@@ -678,41 +713,7 @@ export default function ChatLayout() {
                             },
                           }}
                         />
-                        <Menu position="bottom-end" withArrow>
-                          <Menu.Target>
-                            <ActionIcon
-                              variant="subtle"
-                              color="gray"
-                              size="sm"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <IconDotsVertical size={14} />
-                            </ActionIcon>
-                          </Menu.Target>
-                          <Menu.Dropdown>
-                            <Menu.Item
-                              leftSection={<IconPencil size={14} />}
-                              onClick={() => handleRenameChat(chat.id)}
-                            >
-                              Rename
-                            </Menu.Item>
-                            <Menu.Item
-                              leftSection={<IconPin size={14} />}
-                              onClick={() => handlePinChat(chat.id)}
-                            >
-                              {chat.pinned ? 'Unpin' : 'Pin'}
-                            </Menu.Item>
-                            <Menu.Divider />
-                            <Menu.Item
-                              color="red"
-                              leftSection={<IconTrash size={14} />}
-                              onClick={() => handleRemoveChat(chat.id)}
-                            >
-                              Remove
-                            </Menu.Item>
-                          </Menu.Dropdown>
-                        </Menu>
-                      </Group>
+                      </div>
                     )
                   )
                 ) : (
