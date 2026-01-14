@@ -112,6 +112,11 @@ export default function ChatLayout() {
   const [_isGenerating, setIsGenerating] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
 
+  // Inline editing state
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
+
   // Scroll state
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const isUserScrolledUp = useRef(false);
@@ -147,20 +152,28 @@ export default function ChatLayout() {
 
   // Restore scroll position for a chat
   const restoreScrollPosition = (chatId: string) => {
-    setTimeout(() => {
-      const viewport = scrollViewportRef.current;
-      if (!viewport) {
-        return;
-      }
+    // Use requestAnimationFrame to wait for DOM to update after messages render
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const viewport = scrollViewportRef.current;
+        if (!viewport) {
+          return;
+        }
 
-      const savedPosition = getScrollPosition(chatId);
-      if (savedPosition !== null) {
-        viewport.scrollTop = savedPosition;
-      } else {
-        // New chat or no saved position - scroll to bottom
-        viewport.scrollTop = viewport.scrollHeight;
-      }
-    }, 0);
+        const savedPosition = getScrollPosition(chatId);
+        if (savedPosition !== null) {
+          // Temporarily disable smooth scrolling for instant restore
+          viewport.style.scrollBehavior = 'auto';
+          viewport.scrollTop = savedPosition;
+          viewport.style.scrollBehavior = '';
+        } else {
+          // New chat or no saved position - scroll to bottom
+          viewport.style.scrollBehavior = 'auto';
+          viewport.scrollTop = viewport.scrollHeight;
+          viewport.style.scrollBehavior = '';
+        }
+      });
+    });
   };
 
   // Auto-scroll when messages change (during streaming)
@@ -397,36 +410,66 @@ export default function ChatLayout() {
     }
   };
 
-  // Chat menu handlers
-  const handleRenameChat = async (chatId: string) => {
+  // Chat menu handlers - start inline editing mode
+  const handleRenameChat = (chatId: string) => {
     const chat = chats.find((c) => c.id === chatId);
     if (!chat) {
       return;
     }
+    setEditingChatId(chatId);
+    setEditingTitle(chat.title);
+    // Focus the input after React renders
+    setTimeout(() => editInputRef.current?.focus(), 0);
+  };
 
-    const newTitle = window.prompt('Enter new chat title:', chat.title);
-    if (!newTitle || newTitle === chat.title) {
+  // Save the renamed chat title
+  const saveRenamedChat = async () => {
+    if (!editingChatId) {
+      return;
+    }
+
+    const chat = chats.find((c) => c.id === editingChatId);
+    const newTitle = editingTitle.trim();
+
+    // Cancel if empty or unchanged
+    if (!newTitle || newTitle === chat?.title) {
+      setEditingChatId(null);
+      setEditingTitle('');
       return;
     }
 
     try {
       // Update in database
-      await fetch(`/api/chats/${chatId}`, {
+      await fetch(`/api/chats/${editingChatId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newTitle }),
       });
 
       // Update local state
-      setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, title: newTitle } : c)));
+      setChats((prev) => prev.map((c) => (c.id === editingChatId ? { ...c, title: newTitle } : c)));
 
       // Update localStorage
-      const localChat = getLocalChat(chatId);
+      const localChat = getLocalChat(editingChatId);
       if (localChat) {
         saveLocalChat({ ...localChat, title: newTitle });
       }
     } catch (e) {
       console.error('Failed to rename chat:', e);
+    } finally {
+      setEditingChatId(null);
+      setEditingTitle('');
+    }
+  };
+
+  // Handle keyboard events in rename input
+  const handleRenameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      saveRenamedChat();
+    } else if (event.key === 'Escape') {
+      setEditingChatId(null);
+      setEditingTitle('');
     }
   };
 
@@ -577,22 +620,52 @@ export default function ChatLayout() {
                         transition: 'background-color 0.2s',
                       }}
                     >
-                      <UnstyledButton
-                        onClick={() => handleSelectChat(chat)}
-                        p="sm"
-                        style={{ flex: 1, minWidth: 0 }}
-                      >
-                        <Group wrap="nowrap" gap="xs">
+                      {editingChatId === chat.id ? (
+                        // Inline editing mode
+                        <Group wrap="nowrap" gap="xs" p="sm" style={{ flex: 1, minWidth: 0 }}>
                           {chat.pinned ? (
                             <IconPin size={18} color="gray" style={{ minWidth: 18 }} />
                           ) : (
                             <IconMessage size={18} color="gray" style={{ minWidth: 18 }} />
                           )}
-                          <Text size="sm" truncate style={{ flex: 1 }}>
-                            {chat.title}
-                          </Text>
+                          <TextInput
+                            ref={editInputRef}
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.currentTarget.value)}
+                            onBlur={saveRenamedChat}
+                            onKeyDown={handleRenameKeyDown}
+                            size="xs"
+                            variant="unstyled"
+                            styles={{
+                              input: {
+                                padding: 0,
+                                height: 'auto',
+                                minHeight: 'unset',
+                                fontSize: 'var(--mantine-font-size-sm)',
+                              },
+                            }}
+                            style={{ flex: 1 }}
+                          />
                         </Group>
-                      </UnstyledButton>
+                      ) : (
+                        // Normal display mode
+                        <UnstyledButton
+                          onClick={() => handleSelectChat(chat)}
+                          p="sm"
+                          style={{ flex: 1, minWidth: 0 }}
+                        >
+                          <Group wrap="nowrap" gap="xs">
+                            {chat.pinned ? (
+                              <IconPin size={18} color="gray" style={{ minWidth: 18 }} />
+                            ) : (
+                              <IconMessage size={18} color="gray" style={{ minWidth: 18 }} />
+                            )}
+                            <Text size="sm" truncate style={{ flex: 1 }}>
+                              {chat.title}
+                            </Text>
+                          </Group>
+                        </UnstyledButton>
+                      )}
 
                       <Menu position="bottom-end" withArrow>
                         <Menu.Target>
