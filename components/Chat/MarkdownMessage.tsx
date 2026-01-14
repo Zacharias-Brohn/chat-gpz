@@ -42,6 +42,19 @@ interface ContentSegment {
 }
 
 /**
+ * Clean text content by removing text-based tool call patterns
+ * These are tool calls the model outputs as text (not our structured markers)
+ */
+function cleanTextContent(text: string): string {
+  return text
+    .replace(/\w+\[ARGS\]\{[^}]*\}/g, '') // Remove tool_name[ARGS]{...} patterns
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '') // Remove <tool_call>...</tool_call>
+    .replace(/\{[\s\S]*?"(?:tool|function)"[\s\S]*?\}/g, '') // Remove JSON tool objects
+    .replace(/\n{3,}/g, '\n\n') // Collapse multiple newlines
+    .trim();
+}
+
+/**
  * Parse content to extract thinking blocks, tool calls, and regular text segments
  */
 function parseContentWithToolCalls(content: string): ContentSegment[] {
@@ -58,7 +71,7 @@ function parseContentWithToolCalls(content: string): ContentSegment[] {
   while ((match = combinedPattern.exec(content)) !== null) {
     // Add text before this match
     if (match.index > lastIndex) {
-      const textBefore = content.slice(lastIndex, match.index).trim();
+      const textBefore = cleanTextContent(content.slice(lastIndex, match.index));
       if (textBefore) {
         segments.push({ type: 'text', content: textBefore });
       }
@@ -92,15 +105,18 @@ function parseContentWithToolCalls(content: string): ContentSegment[] {
 
   // Add remaining text after last match
   if (lastIndex < content.length) {
-    const remainingText = content.slice(lastIndex).trim();
+    const remainingText = cleanTextContent(content.slice(lastIndex));
     if (remainingText) {
       segments.push({ type: 'text', content: remainingText });
     }
   }
 
-  // If no special blocks found, return the whole content as text
+  // If no special blocks found, return the whole content as text (cleaned)
   if (segments.length === 0 && content.trim()) {
-    segments.push({ type: 'text', content });
+    const cleanedContent = cleanTextContent(content);
+    if (cleanedContent) {
+      segments.push({ type: 'text', content: cleanedContent });
+    }
   }
 
   return segments;
@@ -221,7 +237,9 @@ function stripToolMarkers(content: string): string {
   return content
     .replace(/<!--TOOL_START:\w+:\{.*?\}-->/g, '')
     .replace(/<!--TOOL_END-->/g, '')
-    .replace(/<\/?think>/g, ''); // Remove think tags but keep content visible during streaming
+    .replace(/<\/?think>/g, '') // Remove think tags but keep content visible during streaming
+    .replace(/\w+\[ARGS\]\{[^}]*\}/g, '') // Remove text-based tool calls like get_weather[ARGS]{...}
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, ''); // Remove XML-style tool calls
 }
 
 function MarkdownContent({ content }: { content: string }) {

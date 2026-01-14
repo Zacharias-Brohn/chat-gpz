@@ -121,24 +121,41 @@ export async function POST(request: NextRequest) {
             iterations++;
 
             // Call Ollama with tools if enabled
+            // Enable thinking mode for models that support it (like deepseek-r1)
             const response = await ollama.chat({
               model,
               messages: workingMessages,
               tools: enableTools ? allTools : undefined,
               stream: true,
+              think: true, // Enable thinking mode - model will separate thinking from response
               options: {
                 num_predict: MAX_RESPONSE_TOKENS,
               },
             });
 
             let fullContent = '';
+            let fullThinking = '';
+            let thinkingSent = false;
             let toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
             // Process the streaming response
             for await (const chunk of response) {
-              // Collect content
+              // Check for thinking content (separate from main content)
+              const thinking = chunk.message?.thinking || '';
+              if (thinking) {
+                fullThinking += thinking;
+                // Don't stream thinking - we'll wrap it at the end
+              }
+
+              // Collect main content
               const text = chunk.message?.content || '';
               if (text) {
+                // If we have accumulated thinking and haven't sent it yet, send it first
+                if (fullThinking && !thinkingSent) {
+                  const thinkingMarker = `<think>${fullThinking}</think>\n\n`;
+                  controller.enqueue(encoder.encode(thinkingMarker));
+                  thinkingSent = true;
+                }
                 fullContent += text;
                 controller.enqueue(encoder.encode(text));
               }
@@ -150,6 +167,12 @@ export async function POST(request: NextRequest) {
                   arguments: tc.function.arguments as Record<string, unknown>,
                 }));
               }
+            }
+
+            // If we have thinking that wasn't sent yet (no content followed it), send it now
+            if (fullThinking && !thinkingSent) {
+              const thinkingMarker = `<think>${fullThinking}</think>\n\n`;
+              controller.enqueue(encoder.encode(thinkingMarker));
             }
 
             // If no native tool calls, try to parse text-based tool calls
