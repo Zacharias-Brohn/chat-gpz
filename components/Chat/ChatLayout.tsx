@@ -65,6 +65,77 @@ interface Chat {
   pinned?: boolean;
 }
 
+type TimeGroup = 'Today' | 'Yesterday' | 'This Week' | 'This Month' | 'Older';
+
+interface GroupedChats {
+  pinned: Chat[];
+  groups: { label: TimeGroup; chats: Chat[] }[];
+}
+
+/**
+ * Group chats by time period (Today, Yesterday, This Week, This Month, Older)
+ * Pinned chats are separated into their own section
+ */
+function groupChatsByTime(chats: Chat[]): GroupedChats {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const monthAgo = new Date(today);
+  monthAgo.setMonth(monthAgo.getMonth() - 1);
+
+  const pinned: Chat[] = [];
+  const todayChats: Chat[] = [];
+  const yesterdayChats: Chat[] = [];
+  const weekChats: Chat[] = [];
+  const monthChats: Chat[] = [];
+  const olderChats: Chat[] = [];
+
+  for (const chat of chats) {
+    if (chat.pinned) {
+      pinned.push(chat);
+      continue;
+    }
+
+    const chatDate = new Date(chat.updatedAt);
+
+    if (chatDate >= today) {
+      todayChats.push(chat);
+    } else if (chatDate >= yesterday) {
+      yesterdayChats.push(chat);
+    } else if (chatDate >= weekAgo) {
+      weekChats.push(chat);
+    } else if (chatDate >= monthAgo) {
+      monthChats.push(chat);
+    } else {
+      olderChats.push(chat);
+    }
+  }
+
+  // Build groups array, only including non-empty groups
+  const groups: { label: TimeGroup; chats: Chat[] }[] = [];
+
+  if (todayChats.length > 0) {
+    groups.push({ label: 'Today', chats: todayChats });
+  }
+  if (yesterdayChats.length > 0) {
+    groups.push({ label: 'Yesterday', chats: yesterdayChats });
+  }
+  if (weekChats.length > 0) {
+    groups.push({ label: 'This Week', chats: weekChats });
+  }
+  if (monthChats.length > 0) {
+    groups.push({ label: 'This Month', chats: monthChats });
+  }
+  if (olderChats.length > 0) {
+    groups.push({ label: 'Older', chats: olderChats });
+  }
+
+  return { pinned, groups };
+}
+
 export function InputWithButton(props: TextInputProps) {
   const theme = useMantineTheme();
 
@@ -609,7 +680,7 @@ export default function ChatLayout() {
           <Stack gap="sm" h="100%">
             <Group justify="space-between">
               <Title order={5} c="dimmed">
-                History
+                Chats
               </Title>
               <Tooltip label="New Chat">
                 <ActionIcon variant="light" color={primaryColor} onClick={handleNewChat}>
@@ -619,9 +690,11 @@ export default function ChatLayout() {
             </Group>
 
             <ScrollArea style={{ flex: 1, margin: '0 -10px' }} p="xs">
-              <Stack gap={2}>
-                {chats.length > 0 ? (
-                  chats.map((chat) =>
+              {chats.length > 0 ? (
+                (() => {
+                  const { pinned, groups } = groupChatsByTime(chats);
+
+                  const renderChatItem = (chat: Chat) =>
                     editingChatId === chat.id ? (
                       // Inline editing mode
                       <Group
@@ -715,14 +788,37 @@ export default function ChatLayout() {
                           }}
                         />
                       </div>
-                    )
-                  )
-                ) : (
-                  <Text size="sm" c="dimmed" ta="center" mt="xl">
-                    {isLoadingChats ? 'Loading...' : 'No saved chats'}
-                  </Text>
-                )}
-              </Stack>
+                    );
+
+                  return (
+                    <Stack gap="md">
+                      {/* Pinned Section */}
+                      {pinned.length > 0 && (
+                        <Stack gap={2}>
+                          <Text size="xs" fw={600} c="dimmed" tt="uppercase" px="xs">
+                            Pinned
+                          </Text>
+                          {pinned.map(renderChatItem)}
+                        </Stack>
+                      )}
+
+                      {/* Time-grouped History Sections */}
+                      {groups.map((group) => (
+                        <Stack key={group.label} gap={2}>
+                          <Text size="xs" fw={600} c="dimmed" tt="uppercase" px="xs">
+                            {group.label}
+                          </Text>
+                          {group.chats.map(renderChatItem)}
+                        </Stack>
+                      ))}
+                    </Stack>
+                  );
+                })()
+              ) : (
+                <Text size="sm" c="dimmed" ta="center" mt="xl">
+                  {isLoadingChats ? 'Loading...' : 'No saved chats'}
+                </Text>
+              )}
             </ScrollArea>
           </Stack>
         </AppShell.Navbar>
