@@ -33,6 +33,14 @@ import { useDisclosure } from '@mantine/hooks';
 import { getInstalledModels, type OllamaModel } from '@/app/actions/ollama';
 import { useThemeContext } from '@/components/DynamicThemeProvider';
 import { SettingsModal } from '@/components/Settings/SettingsModal';
+import {
+  addMessageToLocalChat,
+  getLocalChat,
+  getLocalChats,
+  mergeChats,
+  saveLocalChat,
+  setLocalChats,
+} from '@/lib/chatStorage';
 import { MarkdownMessage } from './MarkdownMessage';
 import classes from './ChatLayout.module.css';
 
@@ -155,22 +163,28 @@ export default function ChatLayout() {
   };
 
   const fetchChats = async () => {
+    // Load from localStorage first for instant display
+    const localChats = getLocalChats();
+    if (localChats.length > 0) {
+      setChats(localChats);
+    }
+
+    // Then fetch from database and merge
     setIsLoadingChats(true);
     try {
       const res = await fetch('/api/chats');
       if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setChats(data);
-        } else {
-          setChats([]);
+        const remoteChats = await res.json();
+        if (Array.isArray(remoteChats)) {
+          // Merge local and remote, update both state and localStorage
+          const merged = mergeChats(localChats, remoteChats);
+          setChats(merged);
+          setLocalChats(merged);
         }
-      } else {
-        setChats([]);
       }
     } catch (e) {
-      console.error('Failed to fetch chats', e);
-      setChats([]);
+      console.error('Failed to fetch chats from server:', e);
+      // Keep using local chats if server fails
     } finally {
       setIsLoadingChats(false);
     }
@@ -178,14 +192,27 @@ export default function ChatLayout() {
 
   const handleSelectChat = (chat: Chat) => {
     setActiveChatId(chat.id);
-    if (chat.messages) {
+
+    // Try to load from localStorage first (faster), fall back to passed chat data
+    const localChat = getLocalChat(chat.id);
+    if (localChat?.messages && localChat.messages.length > 0) {
+      setMessages(localChat.messages);
+    } else if (chat.messages) {
       setMessages(chat.messages);
     } else {
       setMessages([]);
     }
+
     if (mobileOpened) {
       toggleMobile();
     }
+    // Scroll to bottom after messages load
+    setTimeout(() => {
+      const viewport = scrollViewportRef.current;
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
+    }, 0);
   };
 
   const handleNewChat = () => {
@@ -274,9 +301,9 @@ export default function ChatLayout() {
         content: fullContent,
       };
 
-      // Save both user message and assistant response to database
+      // Save to both localStorage and database
       try {
-        // Save user message
+        // Save user message to database
         const userSaveRes = await fetch('/api/chats', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -287,13 +314,14 @@ export default function ChatLayout() {
         });
         const userSaveData = await userSaveRes.json();
         const savedChatId = userSaveData.chatId;
+        const chatTitle = userSaveData.title || userMessage.content.slice(0, 50);
 
         // Update activeChatId if this was a new chat
         if (!activeChatId && savedChatId) {
           setActiveChatId(savedChatId);
         }
 
-        // Save assistant response
+        // Save assistant response to database
         await fetch('/api/chats', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -301,6 +329,15 @@ export default function ChatLayout() {
             chatId: savedChatId,
             messages: [responseMessage],
           }),
+        });
+
+        // Save to localStorage
+        const finalMessages = [...newMessages, responseMessage];
+        saveLocalChat({
+          id: savedChatId,
+          title: chatTitle,
+          updatedAt: new Date().toISOString(),
+          messages: finalMessages,
         });
 
         // Refresh chat list
