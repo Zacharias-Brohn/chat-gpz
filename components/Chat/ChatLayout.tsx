@@ -186,7 +186,43 @@ export default function ChatLayout() {
           role: 'assistant',
           content: result.message.content,
         };
-        setMessages([...newMessages, responseMessage]);
+        const finalMessages = [...newMessages, responseMessage];
+        setMessages(finalMessages);
+
+        // Save both user message and assistant response to database
+        try {
+          // Save user message
+          const userSaveRes = await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatId: activeChatId,
+              messages: [userMessage],
+            }),
+          });
+          const userSaveData = await userSaveRes.json();
+          const savedChatId = userSaveData.chatId;
+
+          // Update activeChatId if this was a new chat
+          if (!activeChatId && savedChatId) {
+            setActiveChatId(savedChatId);
+          }
+
+          // Save assistant response
+          await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatId: savedChatId,
+              messages: [responseMessage],
+            }),
+          });
+
+          // Refresh chat list
+          fetchChats();
+        } catch (saveError) {
+          console.error('Failed to save messages:', saveError);
+        }
       } else {
         // Error handling
         const errorMessage: Message = {
