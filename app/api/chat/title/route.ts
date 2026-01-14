@@ -6,8 +6,9 @@ interface Message {
   content: string;
 }
 
-// Use a fast, consistent model for title generation
-const TITLE_MODEL = 'deepseek-r1:8b';
+// Use a fast, non-thinking model for title generation
+// DeepSeek R1 outputs <think> tags which complicates parsing
+const TITLE_MODEL = 'ministral-3:14b';
 
 /**
  * Generate a short, descriptive title for a chat based on the conversation
@@ -36,18 +37,15 @@ export async function POST(request: NextRequest) {
       .join('\n\n');
 
     // Create a prompt asking for a short title with full context
-    const systemPrompt = `Your task is to generate a SHORT title (3-6 words) for a conversation.
+    const systemPrompt = `Generate a SHORT title (3-6 words) for the conversation below.
 
-Rules:
-- Output ONLY the title, nothing else
-- No quotes, no "Title:" prefix, no explanation
+IMPORTANT:
+- Output ONLY the title text, nothing else
+- No quotes, no punctuation, no explanation
 - Maximum 6 words
-- Be descriptive but concise
-- Examples of good titles:
-  - "Weather Comparison Three Cities"
-  - "Python Debugging Help"
-  - "Recipe for Chocolate Cake"
-  - "React Component Tutorial"`;
+- Be specific and descriptive
+
+Good examples: "Weather in Three Cities", "Python Debugging Help", "Chocolate Cake Recipe", "React Component Tutorial"`;
 
     const response = await ollama.chat({
       model: TITLE_MODEL,
@@ -55,26 +53,26 @@ Rules:
         { role: 'system', content: systemPrompt },
         {
           role: 'user',
-          content: `Conversation:\n\n${conversationContext}\n\nGenerate a 3-6 word title:`,
+          content: `Conversation:\n${conversationContext}\n\nTitle:`,
         },
       ],
       options: {
         temperature: 0.3, // Lower temperature for more focused output
-        num_predict: 50, // Allow more tokens for thinking models
+        num_predict: 20, // Short response - just the title
       },
     });
 
     // eslint-disable-next-line no-console
     console.log('[Title API] Raw model response:', response.message.content);
 
-    // Clean up the response - remove quotes, extra whitespace, thinking, etc.
+    // Clean up the response - remove quotes, extra whitespace, etc.
     let title = response.message.content
       .trim()
-      .replace(/<think>[\s\S]*?<\/think>/g, '') // Remove thinking tags
       .replace(/^["']|["']$/g, '') // Remove surrounding quotes
       .replace(/^Title:\s*/i, '') // Remove "Title:" prefix if present
-      .replace(/^["']|["']$/g, '') // Remove quotes again after prefix removal
+      .replace(/['"]/g, '') // Remove any remaining quotes
       .replace(/\n.*/g, '') // Only keep first line
+      .replace(/[.!?]$/, '') // Remove trailing punctuation
       .trim();
 
     // If still too long, take first 6 words
