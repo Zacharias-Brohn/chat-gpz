@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import { Anchor, Blockquote, Code, List, Text, Title } from '@mantine/core';
+import { StreamingText } from './StreamingText';
 import classes from './MarkdownMessage.module.css';
 
 interface MarkdownMessageProps {
@@ -8,6 +9,18 @@ interface MarkdownMessageProps {
 }
 
 export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessageProps) {
+  // While streaming, render plain text with fade-in animation
+  // Once done, render full markdown
+  if (isStreaming) {
+    return (
+      <div className={classes.markdown}>
+        <Text size="sm" style={{ lineHeight: 1.6 }}>
+          <StreamingText content={content} isStreaming={isStreaming} />
+        </Text>
+      </div>
+    );
+  }
+
   return (
     <div className={classes.markdown}>
       <ReactMarkdown
@@ -75,7 +88,6 @@ export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessag
       >
         {content}
       </ReactMarkdown>
-      {isStreaming && <span className={classes.streamingCursor} />}
     </div>
   );
 }
