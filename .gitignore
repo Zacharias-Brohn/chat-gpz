@@ -134,3 +134,8 @@ dist
 .DS_Store
 next-env.d.ts
 /app/generated/prisma
+
+# SQLite Database
+*.db
+*.db-journal
+*.sqlite
