@@ -352,7 +352,7 @@ export default function ChatLayout() {
               </Tooltip>
               <IconRobot size={28} stroke={1.5} color={theme.colors[primaryColor][6]} />
               <Title order={3} mr="md">
-                AI Chat
+                ChatGPZ
               </Title>
               <Select
                 placeholder="Select Model"

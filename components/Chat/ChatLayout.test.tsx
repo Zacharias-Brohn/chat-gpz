@@ -4,7 +4,7 @@ import ChatLayout from './ChatLayout';
 describe('ChatLayout', () => {
   it('renders chat interface', () => {
     render(<ChatLayout />);
-    expect(screen.getByText('AI Chat')).toBeInTheDocument();
+    expect(screen.getByText('ChatGPZ')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
   });
 });
