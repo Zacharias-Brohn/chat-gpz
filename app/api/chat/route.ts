@@ -4,7 +4,7 @@ import ollama from '@/lib/ollama';
 import { allTools, executeTool, getRegisteredTools } from '@/lib/tools';
 
 // Maximum number of tool call iterations to prevent infinite loops
-const MAX_TOOL_ITERATIONS = 10;
+const MAX_TOOL_ITERATIONS = 5;
 
 // Maximum tokens for model responses (effectively unlimited for long reasoning)
 const MAX_RESPONSE_TOKENS = 32768;
@@ -12,22 +12,30 @@ const MAX_RESPONSE_TOKENS = 32768;
 // System prompt for tool-enabled conversations
 const TOOL_SYSTEM_PROMPT = `You are a helpful AI assistant with access to various tools.
 
-## Tool Usage Guidelines
+## CRITICAL Tool Usage Rules
 
-1. **Think before acting**: Before using a tool, briefly consider what information you need and which tool(s) would best provide it.
+1. **ONE attempt per tool**: If a tool returns a result (even partial), USE that result. Do NOT retry the same tool with different parameters.
 
-2. **Be specific**: When a query is vague (e.g., "weather in Arizona"), ask for clarification OR make a reasonable specific choice (e.g., Phoenix, the capital). Don't call multiple tools for different interpretations.
+2. **Accept first valid result**: When you get weather, search results, or any data - use it immediately in your response. Don't try to "improve" it.
 
-3. **Minimize tool calls**: Use the minimum number of tool calls needed. For example:
-   - If asked about weather in "Paris", call once for Paris, France (the most likely intent)
-   - If asked about "3 cities", call exactly 3 times
-   - Don't call the same tool repeatedly with slight variations
+3. **Handle errors gracefully**: If a tool fails, tell the user. Do NOT retry with variations.
 
-4. **Handle errors gracefully**: If a tool call fails, explain the issue to the user rather than retrying with random variations.
+4. **Give a final answer**: After using tools, you MUST provide a helpful summary to the user. Never end with just tool calls.
 
-5. **Synthesize results**: After receiving tool results, provide a clear, helpful summary rather than just echoing the raw data.
+5. **Be specific with locations**: For vague locations like "Arizona", pick the most likely city (e.g., Phoenix) and use it once.
 
-When using thinking/reasoning models: Use your <think> block to plan which tools to use and why, then execute efficiently.`;
+Example of CORRECT behavior:
+- User: "Weather in Arizona"
+- You: Call get_weather with "Phoenix, Arizona" ONCE
+- Tool returns result
+- You: Summarize the weather for the user
+
+Example of WRONG behavior:
+- Calling the same tool multiple times with slight variations
+- Not providing a final response after getting tool results`;
+
+// Message to inject when max iterations reached to force a response
+const FORCE_RESPONSE_MESSAGE = `You have made several tool calls. Now you MUST provide a final response to the user based on the information you have gathered. Do NOT make any more tool calls. Summarize what you learned and answer the user's question.`;
 
 /**
  * Parse text-based tool calls from model output
@@ -120,12 +128,22 @@ export async function POST(request: NextRequest) {
           while (iterations < MAX_TOOL_ITERATIONS) {
             iterations++;
 
-            // Call Ollama with tools if enabled
+            // If we're on the last allowed iteration, force the model to respond without tools
+            const isLastIteration = iterations === MAX_TOOL_ITERATIONS;
+            if (isLastIteration) {
+              // Add a message forcing the model to give a final response
+              workingMessages.push({
+                role: 'user',
+                content: FORCE_RESPONSE_MESSAGE,
+              });
+            }
+
+            // Call Ollama with tools if enabled (but disable on last iteration)
             // Enable thinking mode for models that support it (like deepseek-r1)
             const response = await ollama.chat({
               model,
               messages: workingMessages,
-              tools: enableTools ? allTools : undefined,
+              tools: enableTools && !isLastIteration ? allTools : undefined,
               stream: true,
               think: true, // Enable thinking mode - model will separate thinking from response
               options: {
