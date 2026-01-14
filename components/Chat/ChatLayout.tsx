@@ -18,7 +18,6 @@ import {
   Container,
   Group,
   Paper,
-  rem,
   ScrollArea,
   Select,
   Stack,
@@ -86,7 +85,6 @@ export default function ChatLayout() {
     },
   ]);
   const [inputValue, setInputValue] = useState('');
-  const [isInputFocused, setIsInputFocused] = useState(false);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
 
   // Model State
@@ -352,39 +350,24 @@ export default function ChatLayout() {
               </Stack>
             </ScrollArea>
 
-            <Paper
-              withBorder
-              p="xs"
-              radius="xl"
-              shadow="sm"
-              style={{
-                transition: 'border-color 0.2s ease',
-                borderColor: isInputFocused ? theme.colors[primaryColor][6] : undefined,
-              }}
-            >
-              <InputWithButton
-                variant="unstyled"
-                placeholder="Type your message..."
-                value={inputValue}
-                onChange={(event) => setInputValue(event.currentTarget.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={() => setIsInputFocused(true)}
-                onBlur={() => setIsInputFocused(false)}
-                style={{ flex: 1, paddingLeft: rem(10) }}
-                rightSection={
-                  <ActionIcon
-                    onClick={handleSendMessage}
-                    variant="filled"
-                    color={primaryColor}
-                    size={32}
-                    radius="xl"
-                    disabled={!inputValue.trim()}
-                  >
-                    <IconSend size={18} />
-                  </ActionIcon>
-                }
-              />
-            </Paper>
+            <InputWithButton
+              placeholder="Type your message..."
+              value={inputValue}
+              onChange={(event) => setInputValue(event.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+              rightSection={
+                <ActionIcon
+                  onClick={handleSendMessage}
+                  variant="filled"
+                  color={primaryColor}
+                  size={32}
+                  radius="xl"
+                  disabled={!inputValue.trim()}
+                >
+                  <IconSend size={18} />
+                </ActionIcon>
+              }
+            />
           </Container>
         </AppShell.Main>
       </AppShell>
