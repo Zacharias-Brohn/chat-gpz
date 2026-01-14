@@ -34,6 +34,7 @@ import { chat, type ChatMessage } from '@/app/actions/chat';
 import { getInstalledModels, type OllamaModel } from '@/app/actions/ollama';
 import { useThemeContext } from '@/components/DynamicThemeProvider';
 import { SettingsModal } from '@/components/Settings/SettingsModal';
+import { MarkdownMessage } from './MarkdownMessage';
 
 interface Message {
   id: string;
@@ -371,9 +372,13 @@ export default function ChatLayout() {
                         borderTopRightRadius: message.role === 'user' ? 0 : undefined,
                       }}
                     >
-                      <Text size="sm" style={{ lineHeight: 1.6 }}>
-                        {message.content}
-                      </Text>
+                      {message.role === 'assistant' ? (
+                        <MarkdownMessage content={message.content} />
+                      ) : (
+                        <Text size="sm" style={{ lineHeight: 1.6 }}>
+                          {message.content}
+                        </Text>
+                      )}
                     </Paper>
 
                     {message.role === 'user' && (

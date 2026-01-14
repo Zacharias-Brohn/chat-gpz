@@ -1,0 +1,20 @@
+.markdown {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.preWrapper {
+  margin: 0.5em 0;
+}
+
+.codeBlock {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+  overflow-x: auto;
+}
