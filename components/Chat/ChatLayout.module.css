@@ -1,0 +1,12 @@
+.chatBubble {
+  max-width: 80%;
+  line-height: 1.6;
+}
+
+.chatBubbleUser {
+  border-top-right-radius: 0;
+}
+
+.chatBubbleAssistant {
+  border-top-left-radius: 0;
+}
