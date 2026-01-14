@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   IconLayoutSidebar,
   IconMessage,
@@ -92,6 +92,51 @@ export default function ChatLayout() {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [_isGenerating, setIsGenerating] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+
+  // Scroll state
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
+  const isUserScrolledUp = useRef(false);
+
+  // Check if user is at bottom of scroll area
+  const checkIfAtBottom = () => {
+    const viewport = scrollViewportRef.current;
+    if (!viewport) {
+      return true;
+    }
+    const threshold = 50; // pixels from bottom to consider "at bottom"
+    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold;
+  };
+
+  // Handle scroll events to track if user scrolled up
+  const handleScroll = () => {
+    isUserScrolledUp.current = !checkIfAtBottom();
+  };
+
+  // Scroll to bottom smoothly
+  const scrollToBottom = () => {
+    const viewport = scrollViewportRef.current;
+    if (viewport && !isUserScrolledUp.current) {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  // Auto-scroll when messages change (during streaming)
+  useEffect(() => {
+    if (streamingMessageId) {
+      scrollToBottom();
+    }
+  }, [messages, streamingMessageId]);
+
+  // Scroll to bottom when user sends a message
+  useEffect(() => {
+    if (streamingMessageId) {
+      isUserScrolledUp.current = false;
+      scrollToBottom();
+    }
+  }, [streamingMessageId]);
 
   // Fetch chats and models on load
   useEffect(() => {
@@ -381,7 +426,14 @@ export default function ChatLayout() {
             h="calc(100vh - 100px)"
             style={{ display: 'flex', flexDirection: 'column' }}
           >
-            <ScrollArea flex={1} mb="md" type="auto" offsetScrollbars>
+            <ScrollArea
+              flex={1}
+              mb="md"
+              type="auto"
+              offsetScrollbars
+              viewportRef={scrollViewportRef}
+              onScrollPositionChange={handleScroll}
+            >
               <Stack gap="xl" px="md" py="lg">
                 {messages.map((message) => (
                   <Group
