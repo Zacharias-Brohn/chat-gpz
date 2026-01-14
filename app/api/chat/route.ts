@@ -235,10 +235,18 @@ export async function POST(request: NextRequest) {
             // Process tool calls
             controller.enqueue(encoder.encode('\n\n'));
 
-            // Add the assistant's response to messages
+            // Add the assistant's response to messages WITH tool_calls
+            // This is critical - the model needs to see what tools IT requested
+            // so it understands the tool results that follow
             workingMessages.push({
               role: 'assistant',
               content: fullContent,
+              tool_calls: toolCalls.map((tc) => ({
+                function: {
+                  name: tc.name,
+                  arguments: tc.arguments,
+                },
+              })),
             });
 
             // Execute each tool and collect results
