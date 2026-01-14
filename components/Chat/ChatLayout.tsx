@@ -34,6 +34,7 @@ import { getInstalledModels, type OllamaModel } from '@/app/actions/ollama';
 import { useThemeContext } from '@/components/DynamicThemeProvider';
 import { SettingsModal } from '@/components/Settings/SettingsModal';
 import { MarkdownMessage } from './MarkdownMessage';
+import classes from './ChatLayout.module.css';
 
 interface Message {
   id: string;
@@ -96,30 +97,27 @@ export default function ChatLayout() {
   // Scroll state
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const isUserScrolledUp = useRef(false);
+  const isStreaming = useRef(false);
 
-  // Check if user is at bottom of scroll area
-  const checkIfAtBottom = () => {
+  // Handle scroll events to track if user scrolled up (only when not streaming)
+  const handleScroll = () => {
+    if (isStreaming.current) {
+      return; // Ignore scroll position checks during streaming
+    }
     const viewport = scrollViewportRef.current;
     if (!viewport) {
-      return true;
+      return;
     }
-    const threshold = 50; // pixels from bottom to consider "at bottom"
-    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold;
+    const threshold = 50;
+    isUserScrolledUp.current =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > threshold;
   };
 
-  // Handle scroll events to track if user scrolled up
-  const handleScroll = () => {
-    isUserScrolledUp.current = !checkIfAtBottom();
-  };
-
-  // Scroll to bottom smoothly
+  // Scroll to bottom using CSS scroll-behavior for smooth animation
   const scrollToBottom = () => {
     const viewport = scrollViewportRef.current;
     if (viewport && !isUserScrolledUp.current) {
-      viewport.scrollTo({
-        top: viewport.scrollHeight,
-        behavior: 'smooth',
-      });
+      viewport.scrollTop = viewport.scrollHeight;
     }
   };
 
@@ -130,11 +128,14 @@ export default function ChatLayout() {
     }
   }, [messages, streamingMessageId]);
 
-  // Scroll to bottom when user sends a message
+  // Track streaming state and scroll to bottom when streaming starts
   useEffect(() => {
     if (streamingMessageId) {
+      isStreaming.current = true;
       isUserScrolledUp.current = false;
       scrollToBottom();
+    } else {
+      isStreaming.current = false;
     }
   }, [streamingMessageId]);
 
@@ -433,6 +434,7 @@ export default function ChatLayout() {
               offsetScrollbars
               viewportRef={scrollViewportRef}
               onScrollPositionChange={handleScroll}
+              classNames={{ viewport: classes.chatScrollViewport }}
             >
               <Stack gap="xl" px="md" py="lg">
                 {messages.map((message) => (

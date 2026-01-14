@@ -10,3 +10,7 @@
 .chatBubbleAssistant {
   border-top-left-radius: 0;
 }
+
+.chatScrollViewport {
+  scroll-behavior: smooth;
+}
