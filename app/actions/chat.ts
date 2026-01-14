@@ -1,6 +1,7 @@
 'use server';
 
-import ollama, { Tool } from 'ollama';
+import { Tool } from 'ollama';
+import ollama from '@/lib/ollama';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';

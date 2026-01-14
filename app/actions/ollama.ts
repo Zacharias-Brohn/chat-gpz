@@ -1,6 +1,6 @@
 'use server';
 
-import ollama from 'ollama';
+import ollama from '@/lib/ollama';
 
 export interface OllamaModel {
   name: string;
