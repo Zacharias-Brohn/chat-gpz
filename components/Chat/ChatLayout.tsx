@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  IconDotsVertical,
   IconLayoutSidebar,
   IconMessage,
+  IconPencil,
+  IconPin,
   IconPlus,
   IconRobot,
   IconSend,
   IconSettings,
+  IconTrash,
   IconUser,
 } from '@tabler/icons-react';
 import {
@@ -17,6 +21,7 @@ import {
   Burger,
   Container,
   Group,
+  Menu,
   Paper,
   ScrollArea,
   Select,
@@ -35,10 +40,14 @@ import { useThemeContext } from '@/components/DynamicThemeProvider';
 import { SettingsModal } from '@/components/Settings/SettingsModal';
 import {
   addMessageToLocalChat,
+  deleteLocalChat,
+  deleteScrollPosition,
   getLocalChat,
   getLocalChats,
+  getScrollPosition,
   mergeChats,
   saveLocalChat,
+  saveScrollPosition,
   setLocalChats,
 } from '@/lib/chatStorage';
 import { MarkdownMessage } from './MarkdownMessage';
@@ -55,6 +64,7 @@ interface Chat {
   title: string;
   updatedAt: string;
   messages?: Message[];
+  pinned?: boolean;
 }
 
 export function InputWithButton(props: TextInputProps) {
@@ -107,18 +117,24 @@ export default function ChatLayout() {
   const isUserScrolledUp = useRef(false);
   const isStreaming = useRef(false);
 
-  // Handle scroll events to track if user scrolled up (only when not streaming)
+  // Handle scroll events - save position and track if user scrolled up
   const handleScroll = () => {
-    if (isStreaming.current) {
-      return; // Ignore scroll position checks during streaming
-    }
     const viewport = scrollViewportRef.current;
     if (!viewport) {
       return;
     }
-    const threshold = 50;
-    isUserScrolledUp.current =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > threshold;
+
+    // Save scroll position for current chat
+    if (activeChatId) {
+      saveScrollPosition(activeChatId, viewport.scrollTop);
+    }
+
+    // Track if user scrolled up (only when not streaming)
+    if (!isStreaming.current) {
+      const threshold = 50;
+      isUserScrolledUp.current =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > threshold;
+    }
   };
 
   // Scroll to bottom using CSS scroll-behavior for smooth animation
@@ -127,6 +143,24 @@ export default function ChatLayout() {
     if (viewport && !isUserScrolledUp.current) {
       viewport.scrollTop = viewport.scrollHeight;
     }
+  };
+
+  // Restore scroll position for a chat
+  const restoreScrollPosition = (chatId: string) => {
+    setTimeout(() => {
+      const viewport = scrollViewportRef.current;
+      if (!viewport) {
+        return;
+      }
+
+      const savedPosition = getScrollPosition(chatId);
+      if (savedPosition !== null) {
+        viewport.scrollTop = savedPosition;
+      } else {
+        // New chat or no saved position - scroll to bottom
+        viewport.scrollTop = viewport.scrollHeight;
+      }
+    }, 0);
   };
 
   // Auto-scroll when messages change (during streaming)
@@ -206,13 +240,9 @@ export default function ChatLayout() {
     if (mobileOpened) {
       toggleMobile();
     }
-    // Scroll to bottom after messages load
-    setTimeout(() => {
-      const viewport = scrollViewportRef.current;
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight;
-      }
-    }, 0);
+
+    // Restore saved scroll position
+    restoreScrollPosition(chat.id);
   };
 
   const handleNewChat = () => {
@@ -367,6 +397,113 @@ export default function ChatLayout() {
     }
   };
 
+  // Chat menu handlers
+  const handleRenameChat = async (chatId: string) => {
+    const chat = chats.find((c) => c.id === chatId);
+    if (!chat) {
+      return;
+    }
+
+    const newTitle = window.prompt('Enter new chat title:', chat.title);
+    if (!newTitle || newTitle === chat.title) {
+      return;
+    }
+
+    try {
+      // Update in database
+      await fetch(`/api/chats/${chatId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+
+      // Update local state
+      setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, title: newTitle } : c)));
+
+      // Update localStorage
+      const localChat = getLocalChat(chatId);
+      if (localChat) {
+        saveLocalChat({ ...localChat, title: newTitle });
+      }
+    } catch (e) {
+      console.error('Failed to rename chat:', e);
+    }
+  };
+
+  const handlePinChat = async (chatId: string) => {
+    const chat = chats.find((c) => c.id === chatId);
+    if (!chat) {
+      return;
+    }
+
+    const newPinned = !chat.pinned;
+
+    try {
+      // Update in database
+      await fetch(`/api/chats/${chatId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: newPinned }),
+      });
+
+      // Update local state and re-sort (pinned first)
+      setChats((prev) => {
+        const updated = prev.map((c) => (c.id === chatId ? { ...c, pinned: newPinned } : c));
+        return updated.sort((a, b) => {
+          if (a.pinned && !b.pinned) {
+            return -1;
+          }
+          if (!a.pinned && b.pinned) {
+            return 1;
+          }
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        });
+      });
+
+      // Update localStorage
+      const localChat = getLocalChat(chatId);
+      if (localChat) {
+        saveLocalChat({ ...localChat, pinned: newPinned });
+      }
+    } catch (e) {
+      console.error('Failed to pin chat:', e);
+    }
+  };
+
+  const handleRemoveChat = async (chatId: string) => {
+    if (!window.confirm('Are you sure you want to delete this chat?')) {
+      return;
+    }
+
+    try {
+      // Delete from database
+      await fetch(`/api/chats/${chatId}`, {
+        method: 'DELETE',
+      });
+
+      // Remove from local state
+      setChats((prev) => prev.filter((c) => c.id !== chatId));
+
+      // Remove from localStorage
+      deleteLocalChat(chatId);
+      deleteScrollPosition(chatId);
+
+      // If this was the active chat, clear messages
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+        setMessages([
+          {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: 'Hello! I am an AI assistant. How can I help you today?',
+          },
+        ]);
+      }
+    } catch (e) {
+      console.error('Failed to delete chat:', e);
+    }
+  };
+
   return (
     <>
       <AppShell
@@ -427,10 +564,10 @@ export default function ChatLayout() {
               <Stack gap="xs">
                 {chats.length > 0 ? (
                   chats.map((chat) => (
-                    <UnstyledButton
+                    <Group
                       key={chat.id}
-                      onClick={() => handleSelectChat(chat)}
-                      p="sm"
+                      gap={0}
+                      wrap="nowrap"
                       style={{
                         borderRadius: 'var(--mantine-radius-md)',
                         backgroundColor:
@@ -440,13 +577,59 @@ export default function ChatLayout() {
                         transition: 'background-color 0.2s',
                       }}
                     >
-                      <Group wrap="nowrap">
-                        <IconMessage size={18} color="gray" style={{ minWidth: 18 }} />
-                        <Text size="sm" truncate>
-                          {chat.title}
-                        </Text>
-                      </Group>
-                    </UnstyledButton>
+                      <UnstyledButton
+                        onClick={() => handleSelectChat(chat)}
+                        p="sm"
+                        style={{ flex: 1, minWidth: 0 }}
+                      >
+                        <Group wrap="nowrap" gap="xs">
+                          {chat.pinned ? (
+                            <IconPin size={18} color="gray" style={{ minWidth: 18 }} />
+                          ) : (
+                            <IconMessage size={18} color="gray" style={{ minWidth: 18 }} />
+                          )}
+                          <Text size="sm" truncate style={{ flex: 1 }}>
+                            {chat.title}
+                          </Text>
+                        </Group>
+                      </UnstyledButton>
+
+                      <Menu position="bottom-end" withArrow>
+                        <Menu.Target>
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            size="sm"
+                            mr="xs"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <IconDotsVertical size={16} />
+                          </ActionIcon>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                          <Menu.Item
+                            leftSection={<IconPencil size={14} />}
+                            onClick={() => handleRenameChat(chat.id)}
+                          >
+                            Rename
+                          </Menu.Item>
+                          <Menu.Item
+                            leftSection={<IconPin size={14} />}
+                            onClick={() => handlePinChat(chat.id)}
+                          >
+                            {chat.pinned ? 'Unpin' : 'Pin'}
+                          </Menu.Item>
+                          <Menu.Divider />
+                          <Menu.Item
+                            color="red"
+                            leftSection={<IconTrash size={14} />}
+                            onClick={() => handleRemoveChat(chat.id)}
+                          >
+                            Remove
+                          </Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    </Group>
                   ))
                 ) : (
                   <Text size="sm" c="dimmed" ta="center" mt="xl">

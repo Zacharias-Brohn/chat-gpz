@@ -14,6 +14,7 @@ interface Chat {
   title: string;
   updatedAt: string;
   messages: Message[];
+  pinned?: boolean;
 }
 
 const CHATS_STORAGE_KEY = 'chat-gpz-chats';
@@ -132,4 +133,73 @@ export function clearLocalChats(): void {
     return;
   }
   localStorage.removeItem(CHATS_STORAGE_KEY);
+}
+
+// ============================================
+// Scroll Position Storage
+// ============================================
+
+const SCROLL_POSITIONS_KEY = 'chat-gpz-scroll-positions';
+
+interface ScrollPositions {
+  [chatId: string]: number;
+}
+
+/**
+ * Get all stored scroll positions
+ */
+function getScrollPositions(): ScrollPositions {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    const stored = localStorage.getItem(SCROLL_POSITIONS_KEY);
+    if (!stored) {
+      return {};
+    }
+    return JSON.parse(stored) as ScrollPositions;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Save scroll positions to localStorage
+ */
+function setScrollPositions(positions: ScrollPositions): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    localStorage.setItem(SCROLL_POSITIONS_KEY, JSON.stringify(positions));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Get scroll position for a specific chat
+ * Returns null if no position saved (indicating should scroll to bottom for new chats)
+ */
+export function getScrollPosition(chatId: string): number | null {
+  const positions = getScrollPositions();
+  return positions[chatId] ?? null;
+}
+
+/**
+ * Save scroll position for a specific chat
+ */
+export function saveScrollPosition(chatId: string, position: number): void {
+  const positions = getScrollPositions();
+  positions[chatId] = position;
+  setScrollPositions(positions);
+}
+
+/**
+ * Delete scroll position for a chat (when chat is deleted)
+ */
+export function deleteScrollPosition(chatId: string): void {
+  const positions = getScrollPositions();
+  delete positions[chatId];
+  setScrollPositions(positions);
 }
