@@ -22,6 +22,7 @@ import {
   Container,
   Group,
   Menu,
+  NavLink,
   Paper,
   ScrollArea,
   Select,
@@ -31,7 +32,6 @@ import {
   TextInputProps,
   Title,
   Tooltip,
-  UnstyledButton,
   useMantineTheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -619,106 +619,102 @@ export default function ChatLayout() {
             </Group>
 
             <ScrollArea style={{ flex: 1, margin: '0 -10px' }} p="xs">
-              <Stack gap="xs">
+              <Stack gap={2}>
                 {chats.length > 0 ? (
-                  chats.map((chat) => (
-                    <Group
-                      key={chat.id}
-                      gap={0}
-                      wrap="nowrap"
-                      style={{
-                        borderRadius: 'var(--mantine-radius-md)',
-                        backgroundColor:
-                          activeChatId === chat.id
-                            ? 'var(--mantine-color-default-hover)'
-                            : 'transparent',
-                        transition: 'background-color 0.2s',
-                      }}
-                    >
-                      {editingChatId === chat.id ? (
-                        // Inline editing mode
-                        <Group wrap="nowrap" gap="xs" p="sm" style={{ flex: 1, minWidth: 0 }}>
-                          {chat.pinned ? (
-                            <IconPin size={18} color="gray" style={{ minWidth: 18 }} />
-                          ) : (
-                            <IconMessage size={18} color="gray" style={{ minWidth: 18 }} />
-                          )}
-                          <TextInput
-                            ref={editInputRef}
-                            value={editingTitle}
-                            onChange={(e) => setEditingTitle(e.currentTarget.value)}
-                            onBlur={saveRenamedChat}
-                            onKeyDown={handleRenameKeyDown}
-                            size="xs"
-                            variant="unstyled"
-                            styles={{
-                              input: {
-                                padding: 0,
-                                height: 'auto',
-                                minHeight: 'unset',
-                                fontSize: 'var(--mantine-font-size-sm)',
-                              },
-                            }}
-                            style={{ flex: 1 }}
-                          />
-                        </Group>
-                      ) : (
-                        // Normal display mode
-                        <UnstyledButton
-                          onClick={() => handleSelectChat(chat)}
-                          p="sm"
-                          style={{ flex: 1, minWidth: 0 }}
-                        >
-                          <Group wrap="nowrap" gap="xs">
-                            {chat.pinned ? (
-                              <IconPin size={18} color="gray" style={{ minWidth: 18 }} />
+                  chats.map((chat) =>
+                    editingChatId === chat.id ? (
+                      // Inline editing mode
+                      <Group
+                        key={chat.id}
+                        wrap="nowrap"
+                        gap="xs"
+                        px="sm"
+                        py={6}
+                        style={{ minWidth: 0 }}
+                      >
+                        {chat.pinned ? (
+                          <IconPin size={16} stroke={1.5} style={{ minWidth: 16 }} />
+                        ) : (
+                          <IconMessage size={16} stroke={1.5} style={{ minWidth: 16 }} />
+                        )}
+                        <TextInput
+                          ref={editInputRef}
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.currentTarget.value)}
+                          onBlur={saveRenamedChat}
+                          onKeyDown={handleRenameKeyDown}
+                          size="xs"
+                          style={{ flex: 1 }}
+                        />
+                      </Group>
+                    ) : (
+                      // Normal display mode with NavLink
+                      <Group key={chat.id} gap={0} wrap="nowrap">
+                        <NavLink
+                          component="button"
+                          active={activeChatId === chat.id}
+                          color={primaryColor}
+                          variant="subtle"
+                          label={chat.title}
+                          leftSection={
+                            chat.pinned ? (
+                              <IconPin size={16} stroke={1.5} />
                             ) : (
-                              <IconMessage size={18} color="gray" style={{ minWidth: 18 }} />
-                            )}
-                            <Text size="sm" truncate style={{ flex: 1 }}>
-                              {chat.title}
-                            </Text>
-                          </Group>
-                        </UnstyledButton>
-                      )}
-
-                      <Menu position="bottom-end" withArrow>
-                        <Menu.Target>
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            size="sm"
-                            mr="xs"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <IconDotsVertical size={16} />
-                          </ActionIcon>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item
-                            leftSection={<IconPencil size={14} />}
-                            onClick={() => handleRenameChat(chat.id)}
-                          >
-                            Rename
-                          </Menu.Item>
-                          <Menu.Item
-                            leftSection={<IconPin size={14} />}
-                            onClick={() => handlePinChat(chat.id)}
-                          >
-                            {chat.pinned ? 'Unpin' : 'Pin'}
-                          </Menu.Item>
-                          <Menu.Divider />
-                          <Menu.Item
-                            color="red"
-                            leftSection={<IconTrash size={14} />}
-                            onClick={() => handleRemoveChat(chat.id)}
-                          >
-                            Remove
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    </Group>
-                  ))
+                              <IconMessage size={16} stroke={1.5} />
+                            )
+                          }
+                          onClick={() => handleSelectChat(chat)}
+                          noWrap
+                          styles={{
+                            root: {
+                              flex: 1,
+                              minWidth: 0,
+                              borderRadius: 'var(--mantine-radius-sm)',
+                              padding: '6px 10px',
+                            },
+                            label: {
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            },
+                          }}
+                        />
+                        <Menu position="bottom-end" withArrow>
+                          <Menu.Target>
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              size="sm"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <IconDotsVertical size={14} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Item
+                              leftSection={<IconPencil size={14} />}
+                              onClick={() => handleRenameChat(chat.id)}
+                            >
+                              Rename
+                            </Menu.Item>
+                            <Menu.Item
+                              leftSection={<IconPin size={14} />}
+                              onClick={() => handlePinChat(chat.id)}
+                            >
+                              {chat.pinned ? 'Unpin' : 'Pin'}
+                            </Menu.Item>
+                            <Menu.Divider />
+                            <Menu.Item
+                              color="red"
+                              leftSection={<IconTrash size={14} />}
+                              onClick={() => handleRemoveChat(chat.id)}
+                            >
+                              Remove
+                            </Menu.Item>
+                          </Menu.Dropdown>
+                        </Menu>
+                      </Group>
+                    )
+                  )
                 ) : (
                   <Text size="sm" c="dimmed" ta="center" mt="xl">
                     {isLoadingChats ? 'Loading...' : 'No saved chats'}
@@ -744,49 +740,49 @@ export default function ChatLayout() {
               onScrollPositionChange={handleScroll}
               classNames={{ viewport: classes.chatScrollViewport }}
             >
-              <Stack gap="xl" px="md" py="lg">
+              <Stack gap="md" px="md" py="lg">
                 {messages.map((message) => (
                   <Group
                     key={message.id}
                     justify={message.role === 'user' ? 'flex-end' : 'flex-start'}
                     align="flex-start"
                     wrap="nowrap"
+                    gap="sm"
                   >
                     {message.role === 'assistant' && (
-                      <Avatar radius="xl" color={primaryColor} variant="light">
-                        <IconRobot size={20} />
+                      <Avatar radius="xl" color={primaryColor} variant="light" size="sm">
+                        <IconRobot size={16} />
                       </Avatar>
                     )}
 
-                    <Paper
-                      p="md"
-                      radius="lg"
-                      bg={
-                        message.role === 'user'
-                          ? 'var(--mantine-color-default-hover)'
-                          : 'transparent'
-                      }
-                      style={{
-                        maxWidth: '80%',
-                        borderTopLeftRadius: message.role === 'assistant' ? 0 : undefined,
-                        borderTopRightRadius: message.role === 'user' ? 0 : undefined,
-                      }}
-                    >
-                      {message.role === 'assistant' ? (
+                    {message.role === 'assistant' ? (
+                      // Assistant message - no bubble, just text aligned with avatar
+                      <div style={{ maxWidth: '85%', paddingTop: 2 }}>
                         <MarkdownMessage
                           content={message.content}
                           isStreaming={message.id === streamingMessageId}
                         />
-                      ) : (
-                        <Text size="sm" style={{ lineHeight: 1.6 }}>
+                      </div>
+                    ) : (
+                      // User message - colored bubble
+                      <Paper
+                        py="xs"
+                        px="md"
+                        radius="lg"
+                        bg={`var(--mantine-color-${primaryColor}-light)`}
+                        style={{
+                          maxWidth: '75%',
+                        }}
+                      >
+                        <Text size="sm" style={{ lineHeight: 1.5 }}>
                           {message.content}
                         </Text>
-                      )}
-                    </Paper>
+                      </Paper>
+                    )}
 
                     {message.role === 'user' && (
-                      <Avatar radius="xl" color="gray" variant="light">
-                        <IconUser size={20} />
+                      <Avatar radius="xl" color={primaryColor} variant="light" size="sm">
+                        <IconUser size={16} />
                       </Avatar>
                     )}
                   </Group>
