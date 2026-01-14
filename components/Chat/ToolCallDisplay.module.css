@@ -27,3 +27,45 @@
   max-height: 200px;
   overflow-y: auto;
 }
+
+/* Group container for multiple tool calls */
+.groupContainer {
+  background-color: var(--mantine-color-default-hover);
+  overflow: hidden;
+}
+
+.groupHeader {
+  transition: background-color 0.15s ease;
+}
+
+.groupHeader:hover {
+  background-color: var(--mantine-color-default-hover);
+}
+
+.groupContent {
+  padding: var(--mantine-spacing-xs);
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+/* Nested tool call inside group */
+.nestedContainer {
+  background-color: var(--mantine-color-body);
+  overflow: hidden;
+}
+
+.nestedContainer:not(:last-child) {
+  margin-bottom: var(--mantine-spacing-xs);
+}
+
+.nestedHeader {
+  transition: background-color 0.15s ease;
+}
+
+.nestedHeader:hover {
+  background-color: var(--mantine-color-default-hover);
+}
+
+.nestedContent {
+  padding: 0 var(--mantine-spacing-xs) var(--mantine-spacing-xs);
+  border-top: 1px solid var(--mantine-color-default-border);
+}

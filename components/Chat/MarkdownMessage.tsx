@@ -18,7 +18,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { ToolCallDisplay } from './ToolCallDisplay';
+import { ToolCall, ToolCallGroup } from './ToolCallDisplay';
 import classes from './MarkdownMessage.module.css';
 // Import KaTeX CSS for LaTeX rendering
 import 'katex/dist/katex.min.css';
@@ -91,6 +91,47 @@ function parseContentWithToolCalls(content: string): ContentSegment[] {
   }
 
   return segments;
+}
+
+/**
+ * Grouped segment type - either text or a group of consecutive tool calls
+ */
+interface GroupedSegment {
+  type: 'text' | 'toolGroup';
+  content?: string;
+  toolCalls?: ToolCall[];
+}
+
+/**
+ * Group consecutive tool call segments together
+ */
+function groupConsecutiveToolCalls(segments: ContentSegment[]): GroupedSegment[] {
+  const grouped: GroupedSegment[] = [];
+  let currentToolGroup: ToolCall[] = [];
+
+  for (const segment of segments) {
+    if (segment.type === 'tool' && segment.toolCall) {
+      // Add to current tool group
+      currentToolGroup.push(segment.toolCall);
+    } else {
+      // Flush any pending tool group before adding text
+      if (currentToolGroup.length > 0) {
+        grouped.push({ type: 'toolGroup', toolCalls: currentToolGroup });
+        currentToolGroup = [];
+      }
+      // Add text segment
+      if (segment.content) {
+        grouped.push({ type: 'text', content: segment.content });
+      }
+    }
+  }
+
+  // Flush any remaining tool group
+  if (currentToolGroup.length > 0) {
+    grouped.push({ type: 'toolGroup', toolCalls: currentToolGroup });
+  }
+
+  return grouped;
 }
 
 /**
@@ -334,21 +375,15 @@ export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessag
     );
   }
 
-  // When not streaming, parse and render tool calls
+  // When not streaming, parse and render tool calls (grouped)
   const segments = parseContentWithToolCalls(content);
+  const groupedSegments = groupConsecutiveToolCalls(segments);
 
   return (
     <div className={classes.markdown}>
-      {segments.map((segment, index) => {
-        if (segment.type === 'tool' && segment.toolCall) {
-          return (
-            <ToolCallDisplay
-              key={`tool-${index}`}
-              toolName={segment.toolCall.toolName}
-              args={segment.toolCall.args}
-              result={segment.toolCall.result}
-            />
-          );
+      {groupedSegments.map((segment, index) => {
+        if (segment.type === 'toolGroup' && segment.toolCalls) {
+          return <ToolCallGroup key={`toolgroup-${index}`} toolCalls={segment.toolCalls} />;
         }
         return <MarkdownContent key={`text-${index}`} content={segment.content || ''} />;
       })}
