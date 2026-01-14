@@ -414,6 +414,9 @@ export default function ChatLayout() {
         content: fullContent,
       };
 
+      // Track if this is a new chat (for title generation)
+      const isNewChat = !activeChatId;
+
       // Save to both localStorage and database
       try {
         // Save user message to database
@@ -427,10 +430,9 @@ export default function ChatLayout() {
         });
         const userSaveData = await userSaveRes.json();
         const savedChatId = userSaveData.chatId;
-        const chatTitle = userSaveData.title || userMessage.content.slice(0, 50);
 
         // Update activeChatId if this was a new chat
-        if (!activeChatId && savedChatId) {
+        if (isNewChat && savedChatId) {
           setActiveChatId(savedChatId);
         }
 
@@ -444,6 +446,48 @@ export default function ChatLayout() {
           }),
         });
 
+        // Generate a title for new chats using the model
+        let chatTitle = `${userMessage.content.slice(0, 30)}...`; // Fallback title
+
+        if (isNewChat && selectedModel) {
+          try {
+            // Build conversation context (excluding the initial greeting)
+            const conversationForTitle = [...newMessages, responseMessage]
+              .filter((m) => !(m.role === 'assistant' && m.content.includes('How can I help')))
+              .map((m) => ({ role: m.role, content: m.content }));
+
+            const titleRes = await fetch('/api/chat/title', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: selectedModel,
+                messages: conversationForTitle,
+              }),
+            });
+            const titleData = await titleRes.json();
+
+            if (titleData.title) {
+              chatTitle = titleData.title;
+
+              // Update title in database
+              await fetch(`/api/chats/${savedChatId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: chatTitle }),
+              });
+
+              // Update title in local state
+              setChats((prev) =>
+                prev.map((c) => (c.id === savedChatId ? { ...c, title: chatTitle } : c))
+              );
+            }
+          } catch (titleError) {
+            // eslint-disable-next-line no-console
+            console.error('Failed to generate title:', titleError);
+            // Continue with fallback title
+          }
+        }
+
         // Save to localStorage
         const finalMessages = [...newMessages, responseMessage];
         saveLocalChat({
@@ -456,6 +500,7 @@ export default function ChatLayout() {
         // Refresh chat list
         fetchChats();
       } catch (saveError) {
+        // eslint-disable-next-line no-console
         console.error('Failed to save messages:', saveError);
       }
     } catch (e) {
