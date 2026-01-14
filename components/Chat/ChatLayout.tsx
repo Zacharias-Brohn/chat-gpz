@@ -668,11 +668,11 @@ export default function ChatLayout() {
                                 <ActionIcon
                                   variant="subtle"
                                   color="gray"
-                                  size="xs"
+                                  size={24}
                                   className={classes.cogwheel}
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <IconSettings size={14} />
+                                  <IconSettings size={16} />
                                 </ActionIcon>
                               </Menu.Target>
                               <Menu.Dropdown>
