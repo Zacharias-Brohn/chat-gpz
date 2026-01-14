@@ -1,10 +1,26 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import { Anchor, Blockquote, Code, List, Text, Title } from '@mantine/core';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import {
+  Anchor,
+  Blockquote,
+  Checkbox,
+  Code,
+  Divider,
+  List,
+  Table,
+  Text,
+  Title,
+} from '@mantine/core';
 import classes from './MarkdownMessage.module.css';
+// Import KaTeX CSS for LaTeX rendering
+import 'katex/dist/katex.min.css';
 
 interface MarkdownMessageProps {
   content: string;
@@ -80,28 +96,64 @@ export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessag
   return (
     <div className={classes.markdown}>
       <ReactMarkdown
-        rehypePlugins={[rehypeRaw]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
+          // Headings
+          h1: ({ children }) => (
+            <Title order={2} mb="xs">
+              {children}
+            </Title>
+          ),
+          h2: ({ children }) => (
+            <Title order={3} mb="xs">
+              {children}
+            </Title>
+          ),
+          h3: ({ children }) => (
+            <Title order={4} mb="xs">
+              {children}
+            </Title>
+          ),
+          h4: ({ children }) => (
+            <Title order={5} mb="xs">
+              {children}
+            </Title>
+          ),
+          h5: ({ children }) => (
+            <Title order={6} mb="xs">
+              {children}
+            </Title>
+          ),
+          h6: ({ children }) => (
+            <Text size="sm" fw={700} mb="xs">
+              {children}
+            </Text>
+          ),
+
+          // Paragraphs and text
           p: ({ children }) => (
             <Text size="sm" style={{ lineHeight: 1.6, marginBottom: '0.5em' }}>
               {children}
             </Text>
           ),
-          h1: ({ children }) => (
-            <Title order={3} mb="xs">
+          strong: ({ children }) => (
+            <Text component="strong" fw={700} inherit>
               {children}
-            </Title>
+            </Text>
           ),
-          h2: ({ children }) => (
-            <Title order={4} mb="xs">
+          em: ({ children }) => (
+            <Text component="em" fs="italic" inherit>
               {children}
-            </Title>
+            </Text>
           ),
-          h3: ({ children }) => (
-            <Title order={5} mb="xs">
+          del: ({ children }) => (
+            <Text component="del" td="line-through" inherit>
               {children}
-            </Title>
+            </Text>
           ),
+
+          // Code
           code: ({ className, children }) => {
             const isInline = !className;
             if (isInline) {
@@ -114,33 +166,76 @@ export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessag
             );
           },
           pre: ({ children }) => <div className={classes.preWrapper}>{children}</div>,
-          ul: ({ children }) => (
-            <List size="sm" mb="xs">
-              {children}
-            </List>
-          ),
+
+          // Lists
+          ul: ({ children, className }) => {
+            // Check if this is a task list (GFM)
+            if (className?.includes('contains-task-list')) {
+              return <ul className={classes.taskList}>{children}</ul>;
+            }
+            return (
+              <List size="sm" mb="xs">
+                {children}
+              </List>
+            );
+          },
           ol: ({ children }) => (
             <List type="ordered" size="sm" mb="xs">
               {children}
             </List>
           ),
-          li: ({ children }) => <List.Item>{children}</List.Item>,
+          li: ({ children, className }) => {
+            // Task list items have a checkbox
+            if (className?.includes('task-list-item')) {
+              return <li className={classes.taskListItem}>{children}</li>;
+            }
+            return <List.Item>{children}</List.Item>;
+          },
+          input: ({ checked, type }) => {
+            if (type === 'checkbox') {
+              return <Checkbox checked={checked} readOnly size="xs" mr="xs" />;
+            }
+            return null;
+          },
+
+          // Links and media
           a: ({ href, children }) => (
             <Anchor href={href} target="_blank" rel="noopener noreferrer">
               {children}
             </Anchor>
           ),
+          img: ({ src, alt }) => {
+            const imgSrc = typeof src === 'string' ? src : '';
+            return (
+              <span className={classes.imageWrapper}>
+                <Image
+                  src={imgSrc}
+                  alt={alt || ''}
+                  width={600}
+                  height={400}
+                  style={{ maxWidth: '100%', height: 'auto' }}
+                  unoptimized // Allow external images
+                />
+              </span>
+            );
+          },
+
+          // Block elements
           blockquote: ({ children }) => <Blockquote mb="xs">{children}</Blockquote>,
-          strong: ({ children }) => (
-            <Text component="strong" fw={700} inherit>
+          hr: () => <Divider my="md" />,
+
+          // Tables (GFM)
+          table: ({ children }) => (
+            <Table striped highlightOnHover withTableBorder withColumnBorders mb="md">
               {children}
-            </Text>
+            </Table>
           ),
-          em: ({ children }) => (
-            <Text component="em" fs="italic" inherit>
-              {children}
-            </Text>
-          ),
+          thead: ({ children }) => <Table.Thead>{children}</Table.Thead>,
+          tbody: ({ children }) => <Table.Tbody>{children}</Table.Tbody>,
+          tr: ({ children }) => <Table.Tr>{children}</Table.Tr>,
+          th: ({ children }) => <Table.Th>{children}</Table.Th>,
+          td: ({ children }) => <Table.Td>{children}</Table.Td>,
+
           // Allow the fade-in spans to pass through
           span: ({ className, children }) => <span className={className}>{children}</span>,
         }}
