@@ -11,13 +11,14 @@ export const weatherTool: Tool = {
   function: {
     name: 'get_weather',
     description:
-      'Get current weather information for a location. Provides temperature, conditions, humidity, wind speed, and more.',
+      'Get current weather information for a location. Provides temperature, conditions, humidity, wind speed, and more. Use simple city names for best results (e.g., "Phoenix" not "Phoenix, AZ").',
     parameters: {
       type: 'object',
       properties: {
         location: {
           type: 'string',
-          description: 'City name or location (e.g., "New York", "London, UK", "Tokyo, Japan")',
+          description:
+            'City name, optionally with country (e.g., "New York", "London", "Tokyo, Japan"). Avoid state abbreviations like "NY" or "AZ".',
         },
         units: {
           type: 'string',
@@ -104,6 +105,43 @@ function getWindDirection(degrees: number): string {
   return directions[index];
 }
 
+/**
+ * Try to geocode a location, with fallback attempts for common formats
+ */
+async function geocodeLocation(location: string): Promise<GeocodingResult | null> {
+  // List of location variations to try
+  const variations = [
+    location,
+    // Remove state abbreviations like ", NY" or ", AZ"
+    location.replace(/,\s*[A-Z]{2}$/i, ''),
+    // Remove country/state suffixes after comma
+    location.split(',')[0].trim(),
+    // Remove "USA", "United States", etc.
+    location.replace(/,?\s*(USA|United States|US)$/i, '').trim(),
+  ];
+
+  // Remove duplicates while preserving order
+  const uniqueVariations = Array.from(new Set(variations.map((v) => v.trim()).filter(Boolean)));
+
+  for (const query of uniqueVariations) {
+    try {
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`;
+      const geoResponse = await fetch(geoUrl, { signal: AbortSignal.timeout(10000) });
+
+      if (!geoResponse.ok) continue;
+
+      const geoData = await geoResponse.json();
+      if (geoData.results && geoData.results.length > 0) {
+        return geoData.results[0];
+      }
+    } catch {
+      // Try next variation
+    }
+  }
+
+  return null;
+}
+
 export const weatherHandler: ToolHandler = async (args): Promise<ToolResult> => {
   const location = args.location as string;
   const units = (args.units as 'metric' | 'imperial') || 'metric';
@@ -116,23 +154,15 @@ export const weatherHandler: ToolHandler = async (args): Promise<ToolResult> => 
   }
 
   try {
-    // First, geocode the location
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
-    const geoResponse = await fetch(geoUrl, { signal: AbortSignal.timeout(10000) });
+    // Geocode the location with fallback attempts
+    const geo = await geocodeLocation(location);
 
-    if (!geoResponse.ok) {
-      throw new Error('Failed to geocode location');
-    }
-
-    const geoData = await geoResponse.json();
-    if (!geoData.results || geoData.results.length === 0) {
+    if (!geo) {
       return {
         success: false,
-        error: `Location not found: "${location}"`,
+        error: `Location not found: "${location}". Try using just the city name (e.g., "Phoenix" instead of "Phoenix, AZ")`,
       };
     }
-
-    const geo: GeocodingResult = geoData.results[0];
 
     // Fetch weather data
     const tempUnit = units === 'imperial' ? 'fahrenheit' : 'celsius';

@@ -125,6 +125,9 @@ export async function POST(request: NextRequest) {
             : [...messages];
           let iterations = 0;
 
+          // Track tool calls to detect loops (same tool with same/similar args)
+          const toolCallHistory: string[] = [];
+
           while (iterations < MAX_TOOL_ITERATIONS) {
             iterations++;
 
@@ -201,6 +204,32 @@ export async function POST(request: NextRequest) {
             // If no tool calls, we're done
             if (toolCalls.length === 0) {
               break;
+            }
+
+            // Check for duplicate/similar tool calls (sign of a loop)
+            // If the model is calling the same tool with the same base argument, stop
+            let hasDuplicateCall = false;
+            for (const tc of toolCalls) {
+              // Create a simple signature for the tool call
+              const mainArg = Object.values(tc.arguments)[0]?.toString().toLowerCase() || '';
+              const signature = `${tc.name}:${mainArg.split(',')[0].split(' ')[0]}`; // e.g., "get_weather:phoenix"
+
+              if (toolCallHistory.includes(signature)) {
+                hasDuplicateCall = true;
+                break;
+              }
+              toolCallHistory.push(signature);
+            }
+
+            // If duplicate detected, force a response on next iteration
+            if (hasDuplicateCall && iterations < MAX_TOOL_ITERATIONS - 1) {
+              // Skip to last iteration to force a response
+              iterations = MAX_TOOL_ITERATIONS - 1;
+              workingMessages.push({
+                role: 'system',
+                content:
+                  'You are repeating the same tool call. Stop calling tools and provide a response using the information you already have.',
+              });
             }
 
             // Process tool calls
