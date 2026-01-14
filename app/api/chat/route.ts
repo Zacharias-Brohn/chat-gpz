@@ -9,6 +9,26 @@ const MAX_TOOL_ITERATIONS = 10;
 // Maximum tokens for model responses (effectively unlimited for long reasoning)
 const MAX_RESPONSE_TOKENS = 32768;
 
+// System prompt for tool-enabled conversations
+const TOOL_SYSTEM_PROMPT = `You are a helpful AI assistant with access to various tools.
+
+## Tool Usage Guidelines
+
+1. **Think before acting**: Before using a tool, briefly consider what information you need and which tool(s) would best provide it.
+
+2. **Be specific**: When a query is vague (e.g., "weather in Arizona"), ask for clarification OR make a reasonable specific choice (e.g., Phoenix, the capital). Don't call multiple tools for different interpretations.
+
+3. **Minimize tool calls**: Use the minimum number of tool calls needed. For example:
+   - If asked about weather in "Paris", call once for Paris, France (the most likely intent)
+   - If asked about "3 cities", call exactly 3 times
+   - Don't call the same tool repeatedly with slight variations
+
+4. **Handle errors gracefully**: If a tool call fails, explain the issue to the user rather than retrying with random variations.
+
+5. **Synthesize results**: After receiving tool results, provide a clear, helpful summary rather than just echoing the raw data.
+
+When using thinking/reasoning models: Use your <think> block to plan which tools to use and why, then execute efficiently.`;
+
 /**
  * Parse text-based tool calls from model output
  * Supports formats like:
@@ -91,7 +111,10 @@ export async function POST(request: NextRequest) {
 
         try {
           // Working copy of messages for tool call iterations
-          const workingMessages: Message[] = [...messages];
+          // Inject system prompt for tool guidance if tools are enabled
+          const workingMessages: Message[] = enableTools
+            ? [{ role: 'system', content: TOOL_SYSTEM_PROMPT }, ...messages]
+            : [...messages];
           let iterations = 0;
 
           while (iterations < MAX_TOOL_ITERATIONS) {
