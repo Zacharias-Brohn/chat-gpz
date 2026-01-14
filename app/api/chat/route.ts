@@ -254,9 +254,11 @@ export async function POST(request: NextRequest) {
               controller.enqueue(encoder.encode(toolMarker));
 
               // Add tool result to messages for next iteration
+              // Include tool_name so model knows which tool produced this result
               workingMessages.push({
                 role: 'tool',
                 content: toolResult,
+                tool_name: toolCall.name,
               });
             }
 
