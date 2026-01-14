@@ -24,6 +24,7 @@ import {
   Stack,
   Text,
   TextInput,
+  TextInputProps,
   Title,
   Tooltip,
   UnstyledButton,
@@ -46,6 +47,25 @@ interface Chat {
   title: string;
   updatedAt: string;
   messages?: Message[];
+}
+
+export function InputWithButton(props: TextInputProps) {
+  const theme = useMantineTheme();
+
+  return (
+    <TextInput
+      radius="xl"
+      size="md"
+      placeholder="Type your message..."
+      rightSectionWidth={42}
+      rightSection={
+        <ActionIcon size={32} radius="xl" color={theme.primaryColor} variant="filled">
+          <IconSend size={18} stroke={1.5} />
+        </ActionIcon>
+      }
+      {...props}
+    />
+  );
 }
 
 export default function ChatLayout() {
@@ -342,29 +362,28 @@ export default function ChatLayout() {
                 borderColor: isInputFocused ? theme.colors[primaryColor][6] : undefined,
               }}
             >
-              <Group gap="xs">
-                <TextInput
-                  variant="unstyled"
-                  placeholder="Type your message..."
-                  value={inputValue}
-                  onChange={(event) => setInputValue(event.currentTarget.value)}
-                  onKeyDown={handleKeyDown}
-                  onFocus={() => setIsInputFocused(true)}
-                  onBlur={() => setIsInputFocused(false)}
-                  style={{ flex: 1, paddingLeft: rem(10) }}
-                  size="md"
-                />
-                <ActionIcon
-                  onClick={handleSendMessage}
-                  variant="filled"
-                  color={primaryColor}
-                  size="lg"
-                  radius="xl"
-                  disabled={!inputValue.trim()}
-                >
-                  <IconSend size={18} />
-                </ActionIcon>
-              </Group>
+              <InputWithButton
+                variant="unstyled"
+                placeholder="Type your message..."
+                value={inputValue}
+                onChange={(event) => setInputValue(event.currentTarget.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => setIsInputFocused(true)}
+                onBlur={() => setIsInputFocused(false)}
+                style={{ flex: 1, paddingLeft: rem(10) }}
+                rightSection={
+                  <ActionIcon
+                    onClick={handleSendMessage}
+                    variant="filled"
+                    color={primaryColor}
+                    size={32}
+                    radius="xl"
+                    disabled={!inputValue.trim()}
+                  >
+                    <IconSend size={18} />
+                  </ActionIcon>
+                }
+              />
             </Paper>
           </Container>
         </AppShell.Main>
