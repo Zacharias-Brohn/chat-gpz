@@ -466,15 +466,24 @@ export default function ChatLayout() {
             });
             const titleData = await titleRes.json();
 
+            // eslint-disable-next-line no-console
+            console.log('[Title] API response:', titleData);
+
             if (titleData.title) {
               chatTitle = titleData.title;
 
+              // eslint-disable-next-line no-console
+              console.log('[Title] Setting chat title to:', chatTitle);
+
               // Update title in database
-              await fetch(`/api/chats/${savedChatId}`, {
+              const patchRes = await fetch(`/api/chats/${savedChatId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: chatTitle }),
               });
+
+              // eslint-disable-next-line no-console
+              console.log('[Title] PATCH response status:', patchRes.status);
 
               // Update title in local state
               setChats((prev) =>

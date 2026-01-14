@@ -13,6 +13,9 @@ export async function POST(request: NextRequest) {
   try {
     const { model, messages } = await request.json();
 
+    // eslint-disable-next-line no-console
+    console.log('[Title API] Request received:', { model, messageCount: messages?.length });
+
     if (!model || !messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Model and messages array are required' }, { status: 400 });
     }
@@ -53,6 +56,9 @@ export async function POST(request: NextRequest) {
       const firstUserMessage = messages.find((m: Message) => m.role === 'user')?.content || '';
       title = firstUserMessage.slice(0, 30) + (firstUserMessage.length > 30 ? '...' : '');
     }
+
+    // eslint-disable-next-line no-console
+    console.log('[Title API] Generated title:', title);
 
     return NextResponse.json({ title });
   } catch (error) {
