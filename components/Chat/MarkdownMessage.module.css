@@ -18,3 +18,16 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+.fadeIn {
+  animation: textFadeIn 0.3s ease-out forwards;
+}
+
+@keyframes textFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

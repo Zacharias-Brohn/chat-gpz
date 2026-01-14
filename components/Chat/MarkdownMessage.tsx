@@ -1,6 +1,9 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { Anchor, Blockquote, Code, List, Text, Title } from '@mantine/core';
-import { StreamingText } from './StreamingText';
 import classes from './MarkdownMessage.module.css';
 
 interface MarkdownMessageProps {
@@ -8,22 +11,76 @@ interface MarkdownMessageProps {
   isStreaming?: boolean;
 }
 
+/**
+ * Hook that tracks content changes and returns content with fade-in markers for new text
+ */
+function useStreamingContent(content: string, isStreaming: boolean) {
+  const [processedContent, setProcessedContent] = useState(content);
+  const prevContentRef = useRef('');
+  const fadeIdRef = useRef(0);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      // When not streaming, just use the content directly (no animation spans)
+      setProcessedContent(content);
+      prevContentRef.current = content;
+      return;
+    }
+
+    const prevContent = prevContentRef.current;
+    const prevLength = prevContent.length;
+    const currentLength = content.length;
+
+    if (currentLength > prevLength) {
+      // New content arrived - wrap it in a fade-in span
+      const existingContent = content.slice(0, prevLength);
+      const newContent = content.slice(prevLength);
+      const fadeId = fadeIdRef.current++;
+
+      // Wrap new content in a span with fade-in class
+      // Use a unique key to force re-render of the animation
+      const wrappedNew = `<span class="${classes.fadeIn}" data-fade-id="${fadeId}">${escapeHtml(newContent)}</span>`;
+
+      setProcessedContent(existingContent + wrappedNew);
+      prevContentRef.current = content;
+    } else if (currentLength < prevLength) {
+      // Content was reset
+      setProcessedContent(content);
+      prevContentRef.current = content;
+      fadeIdRef.current = 0;
+    }
+  }, [content, isStreaming]);
+
+  // When streaming ends, clean up the spans and show plain content
+  useEffect(() => {
+    if (!isStreaming && content) {
+      setProcessedContent(content);
+      prevContentRef.current = content;
+    }
+  }, [isStreaming, content]);
+
+  return processedContent;
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessageProps) {
-  // While streaming, render plain text with fade-in animation
-  // Once done, render full markdown
-  if (isStreaming) {
-    return (
-      <div className={classes.markdown}>
-        <Text size="sm" style={{ lineHeight: 1.6 }}>
-          <StreamingText content={content} isStreaming={isStreaming} />
-        </Text>
-      </div>
-    );
-  }
+  const processedContent = useStreamingContent(content, isStreaming);
 
   return (
     <div className={classes.markdown}>
       <ReactMarkdown
+        rehypePlugins={[rehypeRaw]}
         components={{
           p: ({ children }) => (
             <Text size="sm" style={{ lineHeight: 1.6, marginBottom: '0.5em' }}>
@@ -84,9 +141,11 @@ export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessag
               {children}
             </Text>
           ),
+          // Allow the fade-in spans to pass through
+          span: ({ className, children }) => <span className={className}>{children}</span>,
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );
