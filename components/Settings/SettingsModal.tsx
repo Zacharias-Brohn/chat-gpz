@@ -52,6 +52,7 @@ const POPULAR_MODELS = [
 interface User {
   id: string;
   username: string;
+  accentColor?: string;
 }
 
 interface SettingsModalProps {
@@ -206,6 +207,24 @@ export function SettingsModal({
     setUser(null);
   };
 
+  const handleAccentColorChange = async (color: string) => {
+    // Update local state immediately for responsiveness
+    setPrimaryColor(color);
+
+    // If user is logged in, persist to database
+    if (user) {
+      try {
+        await fetch('/api/user/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accentColor: color }),
+        });
+      } catch (e) {
+        console.error('Failed to save accent color:', e);
+      }
+    }
+  };
+
   const colors = Object.keys(theme.colors).filter(
     (color) => color !== 'dark' && color !== 'gray' && color !== 'white' && color !== 'black'
   );
@@ -290,7 +309,7 @@ export function SettingsModal({
                       key={color}
                       component="button"
                       color={theme.colors[color][6]}
-                      onClick={() => setPrimaryColor(color)}
+                      onClick={() => handleAccentColorChange(color)}
                       style={{ color: '#fff', cursor: 'pointer' }}
                       withShadow
                     >

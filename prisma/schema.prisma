@@ -2,19 +2,20 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "./generated/prisma"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model User {
-  id       String @id @default(cuid())
-  username String @unique
-  password String
-  chats    Chat[]
+  id          String  @id @default(cuid())
+  username    String  @unique
+  password    String
+  accentColor String  @default("blue")
+  chats       Chat[]
 }
 
 model Chat {
