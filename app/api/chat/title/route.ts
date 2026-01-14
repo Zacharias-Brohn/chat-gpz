@@ -6,18 +6,24 @@ interface Message {
   content: string;
 }
 
+// Use a fast, consistent model for title generation
+const TITLE_MODEL = 'deepseek-r1:8b';
+
 /**
  * Generate a short, descriptive title for a chat based on the conversation
  */
 export async function POST(request: NextRequest) {
   try {
-    const { model, messages } = await request.json();
+    const { messages } = await request.json();
 
     // eslint-disable-next-line no-console
-    console.log('[Title API] Request received:', { model, messageCount: messages?.length });
+    console.log('[Title API] Request received:', {
+      model: TITLE_MODEL,
+      messageCount: messages?.length,
+    });
 
-    if (!model || !messages || !Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json({ error: 'Model and messages array are required' }, { status: 400 });
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
     }
 
     // Format the conversation for context (truncate long messages)
@@ -44,7 +50,7 @@ Rules:
   - "React Component Tutorial"`;
 
     const response = await ollama.chat({
-      model,
+      model: TITLE_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -54,7 +60,7 @@ Rules:
       ],
       options: {
         temperature: 0.3, // Lower temperature for more focused output
-        num_predict: 20, // Limit output length
+        num_predict: 50, // Allow more tokens for thinking models
       },
     });
 

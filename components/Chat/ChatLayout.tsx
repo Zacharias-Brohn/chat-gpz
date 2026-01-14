@@ -449,7 +449,7 @@ export default function ChatLayout() {
         // Generate a title for new chats using the model
         let chatTitle = `${userMessage.content.slice(0, 30)}...`; // Fallback title
 
-        if (isNewChat && selectedModel) {
+        if (isNewChat) {
           try {
             // Build conversation context (excluding the initial greeting)
             const conversationForTitle = [...newMessages, responseMessage]
@@ -460,7 +460,6 @@ export default function ChatLayout() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                model: selectedModel,
                 messages: conversationForTitle,
               }),
             });
