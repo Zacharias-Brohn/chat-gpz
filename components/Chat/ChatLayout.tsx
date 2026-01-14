@@ -39,7 +39,6 @@ import { getInstalledModels, type OllamaModel } from '@/app/actions/ollama';
 import { useThemeContext } from '@/components/DynamicThemeProvider';
 import { SettingsModal } from '@/components/Settings/SettingsModal';
 import {
-  addMessageToLocalChat,
   deleteLocalChat,
   deleteScrollPosition,
   getLocalChat,
@@ -116,6 +115,7 @@ export default function ChatLayout() {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const justStartedEditing = useRef(false);
 
   // Scroll state
   const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -416,14 +416,29 @@ export default function ChatLayout() {
     if (!chat) {
       return;
     }
-    setEditingChatId(chatId);
-    setEditingTitle(chat.title);
-    // Focus the input after React renders
-    setTimeout(() => editInputRef.current?.focus(), 0);
+    // Small delay to let the menu close first before entering edit mode
+    setTimeout(() => {
+      justStartedEditing.current = true;
+      setEditingChatId(chatId);
+      setEditingTitle(chat.title);
+      // Focus the input after React renders
+      setTimeout(() => {
+        editInputRef.current?.focus();
+        editInputRef.current?.select();
+        // Allow blur to work after a short delay
+        setTimeout(() => {
+          justStartedEditing.current = false;
+        }, 100);
+      }, 0);
+    }, 50);
   };
 
   // Save the renamed chat title
   const saveRenamedChat = async () => {
+    // Skip if we just started editing (prevents immediate blur from closing)
+    if (justStartedEditing.current) {
+      return;
+    }
     if (!editingChatId) {
       return;
     }
