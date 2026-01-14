@@ -8,56 +8,56 @@ interface StreamingTextProps {
   isStreaming: boolean;
 }
 
+interface TextChunk {
+  id: number;
+  text: string;
+}
+
 /**
  * Component that renders text with a smooth fade-in animation for new chunks.
- * Splits content into "committed" (already visible) and "new" (fading in) portions.
+ * Each chunk gets its own span element with a fade-in animation.
  */
 export function StreamingText({ content, isStreaming }: StreamingTextProps) {
-  const [committedLength, setCommittedLength] = useState(0);
-  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [chunks, setChunks] = useState<TextChunk[]>([]);
+  const prevLengthRef = useRef(0);
+  const chunkIdRef = useRef(0);
 
-  // When content grows, schedule the new content to become "committed" after animation
   useEffect(() => {
-    if (content.length > committedLength) {
-      // Clear any pending timeout
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
+    const prevLength = prevLengthRef.current;
+    const currentLength = content.length;
 
-      // After the fade-in animation completes, commit the new content
-      animationTimeoutRef.current = setTimeout(() => {
-        setCommittedLength(content.length);
-      }, 300); // Match CSS animation duration
-    }
-
-    return () => {
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-    };
-  }, [content, committedLength]);
-
-  // When streaming stops, immediately commit all content
-  useEffect(() => {
-    if (!isStreaming) {
-      setCommittedLength(content.length);
-    }
-  }, [isStreaming, content.length]);
-
-  // Reset when content is cleared (new message)
-  useEffect(() => {
-    if (content.length === 0) {
-      setCommittedLength(0);
+    if (currentLength > prevLength) {
+      // New content arrived - create a new chunk for it
+      const newText = content.slice(prevLength);
+      const newChunk: TextChunk = {
+        id: chunkIdRef.current++,
+        text: newText,
+      };
+      setChunks((prev) => [...prev, newChunk]);
+      prevLengthRef.current = currentLength;
+    } else if (currentLength < prevLength) {
+      // Content was reset (new message)
+      setChunks([]);
+      prevLengthRef.current = 0;
+      chunkIdRef.current = 0;
     }
   }, [content]);
 
-  const committedText = content.slice(0, committedLength);
-  const newText = content.slice(committedLength);
+  // When streaming stops, consolidate all chunks into one (removes animations)
+  useEffect(() => {
+    if (!isStreaming && content.length > 0) {
+      setChunks([{ id: 0, text: content }]);
+      prevLengthRef.current = content.length;
+    }
+  }, [isStreaming, content]);
 
   return (
     <span className={classes.streamingText}>
-      <span>{committedText}</span>
-      {newText && <span className={classes.fadeIn}>{newText}</span>}
+      {chunks.map((chunk) => (
+        <span key={chunk.id} className={isStreaming ? classes.fadeIn : undefined}>
+          {chunk.text}
+        </span>
+      ))}
     </span>
   );
 }
