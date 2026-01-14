@@ -18,6 +18,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { ThinkingBlock } from './ThinkingBlock';
 import { ToolCall, ToolCallGroup } from './ToolCallDisplay';
 import classes from './MarkdownMessage.module.css';
 // Import KaTeX CSS for LaTeX rendering
@@ -35,23 +36,27 @@ interface ParsedToolCall {
 }
 
 interface ContentSegment {
-  type: 'text' | 'tool';
+  type: 'text' | 'tool' | 'thinking';
   content?: string;
   toolCall?: ParsedToolCall;
 }
 
 /**
- * Parse content to extract tool calls and regular text segments
+ * Parse content to extract thinking blocks, tool calls, and regular text segments
  */
 function parseContentWithToolCalls(content: string): ContentSegment[] {
   const segments: ContentSegment[] = [];
-  const toolPattern = /<!--TOOL_START:(\w+):(\{.*?\})-->([\s\S]*?)<!--TOOL_END-->/g;
+
+  // Combined pattern for both thinking blocks and tool calls
+  // This ensures we parse them in the order they appear
+  const combinedPattern =
+    /(<think>([\s\S]*?)<\/think>)|<!--TOOL_START:(\w+):(\{.*?\})-->([\s\S]*?)<!--TOOL_END-->/g;
 
   let lastIndex = 0;
   let match;
 
-  while ((match = toolPattern.exec(content)) !== null) {
-    // Add text before this tool call
+  while ((match = combinedPattern.exec(content)) !== null) {
+    // Add text before this match
     if (match.index > lastIndex) {
       const textBefore = content.slice(lastIndex, match.index).trim();
       if (textBefore) {
@@ -59,25 +64,33 @@ function parseContentWithToolCalls(content: string): ContentSegment[] {
       }
     }
 
-    // Parse the tool call
-    const toolName = match[1];
-    let args: Record<string, unknown> = {};
-    try {
-      args = JSON.parse(match[2]);
-    } catch {
-      // Invalid JSON, use empty args
-    }
-    const result = match[3].trim();
+    if (match[1]) {
+      // This is a thinking block
+      const thinkingContent = match[2].trim();
+      if (thinkingContent) {
+        segments.push({ type: 'thinking', content: thinkingContent });
+      }
+    } else if (match[3]) {
+      // This is a tool call
+      const toolName = match[3];
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(match[4]);
+      } catch {
+        // Invalid JSON, use empty args
+      }
+      const result = match[5].trim();
 
-    segments.push({
-      type: 'tool',
-      toolCall: { toolName, args, result },
-    });
+      segments.push({
+        type: 'tool',
+        toolCall: { toolName, args, result },
+      });
+    }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text after last tool call
+  // Add remaining text after last match
   if (lastIndex < content.length) {
     const remainingText = content.slice(lastIndex).trim();
     if (remainingText) {
@@ -85,7 +98,7 @@ function parseContentWithToolCalls(content: string): ContentSegment[] {
     }
   }
 
-  // If no tool calls found, return the whole content as text
+  // If no special blocks found, return the whole content as text
   if (segments.length === 0 && content.trim()) {
     segments.push({ type: 'text', content });
   }
@@ -94,16 +107,16 @@ function parseContentWithToolCalls(content: string): ContentSegment[] {
 }
 
 /**
- * Grouped segment type - either text or a group of consecutive tool calls
+ * Grouped segment type - text, thinking block, or group of consecutive tool calls
  */
 interface GroupedSegment {
-  type: 'text' | 'toolGroup';
+  type: 'text' | 'toolGroup' | 'thinking';
   content?: string;
   toolCalls?: ToolCall[];
 }
 
 /**
- * Group consecutive tool call segments together
+ * Group consecutive tool call segments together, keep thinking blocks separate
  */
 function groupConsecutiveToolCalls(segments: ContentSegment[]): GroupedSegment[] {
   const grouped: GroupedSegment[] = [];
@@ -114,13 +127,17 @@ function groupConsecutiveToolCalls(segments: ContentSegment[]): GroupedSegment[]
       // Add to current tool group
       currentToolGroup.push(segment.toolCall);
     } else {
-      // Flush any pending tool group before adding text
+      // Flush any pending tool group before adding other segment
       if (currentToolGroup.length > 0) {
         grouped.push({ type: 'toolGroup', toolCalls: currentToolGroup });
         currentToolGroup = [];
       }
-      // Add text segment
-      if (segment.content) {
+
+      if (segment.type === 'thinking' && segment.content) {
+        // Add thinking block as-is
+        grouped.push({ type: 'thinking', content: segment.content });
+      } else if (segment.content) {
+        // Add text segment
         grouped.push({ type: 'text', content: segment.content });
       }
     }
@@ -198,10 +215,13 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Strip tool call markers from content for streaming display
+ * Strip tool call and thinking markers from content for streaming display
  */
 function stripToolMarkers(content: string): string {
-  return content.replace(/<!--TOOL_START:\w+:\{.*?\}-->/g, '').replace(/<!--TOOL_END-->/g, '');
+  return content
+    .replace(/<!--TOOL_START:\w+:\{.*?\}-->/g, '')
+    .replace(/<!--TOOL_END-->/g, '')
+    .replace(/<\/?think>/g, ''); // Remove think tags but keep content visible during streaming
 }
 
 function MarkdownContent({ content }: { content: string }) {
@@ -382,6 +402,9 @@ export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessag
   return (
     <div className={classes.markdown}>
       {groupedSegments.map((segment, index) => {
+        if (segment.type === 'thinking' && segment.content) {
+          return <ThinkingBlock key={`thinking-${index}`} content={segment.content} />;
+        }
         if (segment.type === 'toolGroup' && segment.toolCalls) {
           return <ToolCallGroup key={`toolgroup-${index}`} toolCalls={segment.toolCalls} />;
         }

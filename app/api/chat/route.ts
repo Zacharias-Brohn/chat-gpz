@@ -6,6 +6,9 @@ import { allTools, executeTool, getRegisteredTools } from '@/lib/tools';
 // Maximum number of tool call iterations to prevent infinite loops
 const MAX_TOOL_ITERATIONS = 10;
 
+// Maximum tokens for model responses (effectively unlimited for long reasoning)
+const MAX_RESPONSE_TOKENS = 32768;
+
 /**
  * Parse text-based tool calls from model output
  * Supports formats like:
@@ -100,6 +103,9 @@ export async function POST(request: NextRequest) {
               messages: workingMessages,
               tools: enableTools ? allTools : undefined,
               stream: true,
+              options: {
+                num_predict: MAX_RESPONSE_TOKENS,
+              },
             });
 
             let fullContent = '';

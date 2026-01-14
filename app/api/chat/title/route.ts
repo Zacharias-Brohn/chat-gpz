@@ -60,6 +60,7 @@ Good examples: "Weather in Three Cities", "Python Debugging Help", "Chocolate Ca
         temperature: 0.3, // Lower temperature for more focused output
         num_predict: 20, // Short response - just the title
       },
+      keep_alive: 0, // Immediately unload model after generation
     });
 
     // eslint-disable-next-line no-console
