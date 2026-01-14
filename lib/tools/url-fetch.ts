@@ -106,7 +106,7 @@ export const urlFetchHandler: ToolHandler = async (args): Promise<ToolResult> =>
 
     // Truncate if needed
     if (text.length > maxLength) {
-      text = text.substring(0, maxLength) + '\n\n[Content truncated...]';
+      text = `${text.substring(0, maxLength)}\n\n[Content truncated...]`;
     }
 
     return {

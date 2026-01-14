@@ -144,21 +144,20 @@ export async function POST(request: NextRequest) {
 
             // Execute each tool and collect results
             for (const toolCall of toolCalls) {
-              controller.enqueue(encoder.encode(`**Using tool: ${toolCall.name}**\n`));
+              // Use structured markers for frontend parsing
+              const toolOutput = await executeTool(toolCall.name, toolCall.arguments);
+              const toolResult = toolOutput.success
+                ? toolOutput.result || ''
+                : `Error: ${toolOutput.error}`;
 
-              const result = await executeTool(toolCall.name, toolCall.arguments);
-
-              // Send tool result to stream
-              if (result.success) {
-                controller.enqueue(encoder.encode(`\`\`\`\n${result.result}\n\`\`\`\n\n`));
-              } else {
-                controller.enqueue(encoder.encode(`Error: ${result.error}\n\n`));
-              }
+              // Format: <!--TOOL_START:name:args-->result<!--TOOL_END-->
+              const toolMarker = `<!--TOOL_START:${toolCall.name}:${JSON.stringify(toolCall.arguments)}-->${toolResult}<!--TOOL_END-->\n\n`;
+              controller.enqueue(encoder.encode(toolMarker));
 
               // Add tool result to messages for next iteration
               workingMessages.push({
                 role: 'tool',
-                content: result.success ? result.result || '' : `Error: ${result.error}`,
+                content: toolResult,
               });
             }
 

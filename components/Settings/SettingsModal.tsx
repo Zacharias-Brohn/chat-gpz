@@ -35,19 +35,22 @@ import {
 } from '@mantine/core';
 import { deleteModel, getInstalledModels, pullModel, type OllamaModel } from '@/app/actions/ollama';
 
-const POPULAR_MODELS = [
-  'llama3.2',
-  'llama3.1',
-  'mistral',
-  'gemma2',
-  'qwen2.5',
-  'phi3.5',
-  'neural-chat',
-  'starling-lm',
-  'codellama',
-  'deepseek-coder',
-  'llava',
-];
+/*
+ * Popular models list - reserved for future autocomplete feature
+ * const POPULAR_MODELS = [
+ *   'llama3.2',
+ *   'llama3.1',
+ *   'mistral',
+ *   'gemma2',
+ *   'qwen2.5',
+ *   'phi3.5',
+ *   'neural-chat',
+ *   'starling-lm',
+ *   'codellama',
+ *   'deepseek-coder',
+ *   'llava',
+ * ];
+ */
 
 interface User {
   id: string;
@@ -98,8 +101,6 @@ export function SettingsModal({
     },
   });
 
-  const [value, setValue] = useState<string | null>(null);
-
   // Filter installed models based on search
   const options = models
     .filter((item) => item.name.toLowerCase().includes(search.toLowerCase().trim()))
@@ -129,6 +130,7 @@ export function SettingsModal({
         setUser(null);
       }
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.error(e);
     }
   };
@@ -139,6 +141,7 @@ export function SettingsModal({
       const list = await getInstalledModels();
       setModels(list);
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.error(e);
     } finally {
       setLoadingModels(false);
@@ -146,7 +149,9 @@ export function SettingsModal({
   };
 
   const handlePullModel = async () => {
-    if (!newModelName) return;
+    if (!newModelName) {
+      return;
+    }
     setPullingModel(newModelName);
     try {
       const result = await pullModel(newModelName);
@@ -157,6 +162,7 @@ export function SettingsModal({
         setError(result.message);
       }
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.error(e);
     } finally {
       setPullingModel(null);
@@ -164,11 +170,15 @@ export function SettingsModal({
   };
 
   const handleDeleteModel = async (name: string) => {
-    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+    // eslint-disable-next-line no-alert
+    if (!confirm(`Are you sure you want to delete ${name}?`)) {
+      return;
+    }
     try {
       await deleteModel(name);
       await fetchModels();
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.error(e);
     }
   };
@@ -195,8 +205,8 @@ export function SettingsModal({
       await fetchUser();
       setUsername('');
       setPassword('');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -220,6 +230,7 @@ export function SettingsModal({
           body: JSON.stringify({ accentColor: color }),
         });
       } catch (e) {
+        // eslint-disable-next-line no-console
         console.error('Failed to save accent color:', e);
       }
     }

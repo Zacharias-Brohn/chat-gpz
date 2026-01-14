@@ -41,7 +41,7 @@ export const dateTimeHandler: ToolHandler = async (args): Promise<ToolResult> =>
 
     switch (format) {
       case 'iso':
-        result = now.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T') + 'Z';
+        result = `${now.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T')}Z`;
         break;
       case 'date_only':
         result = now.toLocaleDateString('en-US', {

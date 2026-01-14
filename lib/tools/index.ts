@@ -18,7 +18,7 @@ import { webSearchHandler, webSearchTool } from './web-search';
 export type { ToolHandler, ToolResult } from './types';
 
 // Registry of tool handlers
-const toolHandlers: Map<string, ToolHandler> = new Map();
+const toolHandlers = new Map<string, ToolHandler>();
 
 /**
  * Register a tool handler

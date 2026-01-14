@@ -1,5 +1,4 @@
 .markdown {
-  word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
@@ -14,19 +13,20 @@
 .codeBlock {
   display: block;
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: break-all;
   max-width: 100%;
   overflow-x: auto;
 }
 
 .fadeIn {
-  animation: textFadeIn 0.3s ease-out forwards;
+  animation: text-fade-in 0.3s ease-out forwards;
 }
 
-@keyframes textFadeIn {
+@keyframes text-fade-in {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }

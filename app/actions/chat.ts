@@ -46,11 +46,12 @@ const tools: Tool[] = [
 
 // --- Tool Implementations ---
 
-const availableTools: Record<string, Function> = {
+const availableTools: Record<string, (args: Record<string, unknown>) => string> = {
   get_current_time: () => {
     return new Date().toLocaleTimeString();
   },
-  calculate: ({ expression }: { expression: string }) => {
+  calculate: (args) => {
+    const expression = args.expression as string;
     try {
       // Safety: simplistic eval for demo purposes.
       // In production, use a math parser library like mathjs.
@@ -68,17 +69,19 @@ export async function chat(model: string, messages: ChatMessage[]) {
     let response;
     try {
       response = await ollama.chat({
-        model: model,
-        messages: messages,
-        tools: tools,
+        model,
+        messages,
+        tools,
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Fallback: If model doesn't support tools, retry without them
-      if (e.message?.includes('does not support tools')) {
+      const errorMessage = e instanceof Error ? e.message : '';
+      if (errorMessage.includes('does not support tools')) {
+        // eslint-disable-next-line no-console
         console.warn(`Model ${model} does not support tools. Falling back to standard chat.`);
         response = await ollama.chat({
-          model: model,
-          messages: messages,
+          model,
+          messages,
         });
       } else {
         throw e;
@@ -101,6 +104,7 @@ export async function chat(model: string, messages: ChatMessage[]) {
         const functionToCall = availableTools[functionName];
 
         if (functionToCall) {
+          // eslint-disable-next-line no-console
           console.log(`🤖 Tool Call: ${functionName}`, tool.function.arguments);
           const functionArgs = tool.function.arguments;
           const functionResponse = functionToCall(functionArgs);
@@ -115,9 +119,9 @@ export async function chat(model: string, messages: ChatMessage[]) {
 
       // 3. Send the tool results back to the model to get the final answer
       response = await ollama.chat({
-        model: model,
-        messages: messages,
-        tools: tools,
+        model,
+        messages,
+        tools,
       });
     }
 
@@ -125,11 +129,12 @@ export async function chat(model: string, messages: ChatMessage[]) {
       success: true,
       message: response.message,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // eslint-disable-next-line no-console
     console.error('Chat error:', error);
     return {
       success: false,
-      error: error.message || 'Failed to generate response',
+      error: error instanceof Error ? error.message : 'Failed to generate response',
     };
   }
 }

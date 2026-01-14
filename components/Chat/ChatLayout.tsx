@@ -528,6 +528,7 @@ export default function ChatLayout() {
   };
 
   const handleRemoveChat = async (chatId: string) => {
+    // eslint-disable-next-line no-alert
     if (!window.confirm('Are you sure you want to delete this chat?')) {
       return;
     }

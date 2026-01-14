@@ -28,7 +28,7 @@ export const calculatorTool: Tool = {
 // Safe math evaluation using Function constructor with limited scope
 function safeEvaluate(expression: string): number {
   // Replace common math notation
-  let expr = expression
+  const expr = expression
     .replace(/\^/g, '**') // Exponents
     .replace(/sqrt/g, 'Math.sqrt')
     .replace(/sin/g, 'Math.sin')

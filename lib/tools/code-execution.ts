@@ -44,9 +44,9 @@ export const codeExecutionHandler: ToolHandler = async (args): Promise<ToolResul
     const logs: string[] = [];
     const mockConsole = {
       log: (...args: unknown[]) => logs.push(args.map(String).join(' ')),
-      error: (...args: unknown[]) => logs.push('[ERROR] ' + args.map(String).join(' ')),
-      warn: (...args: unknown[]) => logs.push('[WARN] ' + args.map(String).join(' ')),
-      info: (...args: unknown[]) => logs.push('[INFO] ' + args.map(String).join(' ')),
+      error: (...args: unknown[]) => logs.push(`[ERROR] ${args.map(String).join(' ')}`),
+      warn: (...args: unknown[]) => logs.push(`[WARN] ${args.map(String).join(' ')}`),
+      info: (...args: unknown[]) => logs.push(`[INFO] ${args.map(String).join(' ')}`),
     };
 
     // Create a sandboxed context with limited globals
@@ -87,7 +87,6 @@ export const codeExecutionHandler: ToolHandler = async (args): Promise<ToolResul
       return fn.call(sandbox);
     };
 
-    let result: unknown;
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Execution timed out')), timeoutMs);
     });
@@ -100,15 +99,15 @@ export const codeExecutionHandler: ToolHandler = async (args): Promise<ToolResul
       }
     });
 
-    result = await Promise.race([executionPromise, timeoutPromise]);
+    const result = await Promise.race([executionPromise, timeoutPromise]);
 
     // Format output
     let output = '';
     if (logs.length > 0) {
-      output += 'Console output:\n' + logs.join('\n') + '\n\n';
+      output += `Console output:\n${logs.join('\n')}\n\n`;
     }
     if (result !== undefined) {
-      output += 'Result: ' + JSON.stringify(result, null, 2);
+      output += `Result: ${JSON.stringify(result, null, 2)}`;
     } else if (logs.length === 0) {
       output = 'Code executed successfully (no output)';
     }

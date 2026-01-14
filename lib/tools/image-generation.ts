@@ -13,11 +13,11 @@ export const imageGenerationTool: Tool = {
   type: 'function',
   function: {
     name: 'generate_image',
-    description:
-      'Generate an image based on a text description. Creates images using AI image generation. ' +
-      (IMAGE_API_URL
+    description: `Generate an image based on a text description. Creates images using AI image generation. ${
+      IMAGE_API_URL
         ? 'Image generation is available.'
-        : 'NOTE: Image generation is not configured. Set IMAGE_GENERATION_API_URL environment variable.'),
+        : 'NOTE: Image generation is not configured. Set IMAGE_GENERATION_API_URL environment variable.'
+    }`,
     parameters: {
       type: 'object',
       properties: {
