@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
@@ -29,21 +28,18 @@ interface MarkdownMessageProps {
   isStreaming?: boolean;
 }
 
-interface ParsedToolCall {
-  toolName: string;
-  args: Record<string, unknown>;
-  result: string;
-}
-
-interface ContentSegment {
-  type: 'text' | 'tool' | 'thinking';
+/**
+ * Parsed segment with streaming state
+ */
+interface ParsedSegment {
+  type: 'text' | 'thinking' | 'toolGroup';
   content?: string;
-  toolCall?: ParsedToolCall;
+  toolCalls?: ToolCall[];
+  isStreaming?: boolean; // True if this segment is still being streamed
 }
 
 /**
  * Clean text content by removing text-based tool call patterns
- * These are tool calls the model outputs as text (not our structured markers)
  */
 function cleanTextContent(text: string): string {
   return text
@@ -55,36 +51,66 @@ function cleanTextContent(text: string): string {
 }
 
 /**
- * Parse content to extract thinking blocks, tool calls, and regular text segments
+ * Parse content into segments, handling both complete and incomplete (streaming) blocks
  */
-function parseContentWithToolCalls(content: string): ContentSegment[] {
-  const segments: ContentSegment[] = [];
+function parseContentRealtime(content: string, isStreaming: boolean): ParsedSegment[] {
+  const segments: ParsedSegment[] = [];
 
-  // Combined pattern for both thinking blocks and tool calls
-  // This ensures we parse them in the order they appear
+  // Check for incomplete thinking block (opened but not closed)
+  const hasOpenThink = content.includes('<think>');
+  const hasCloseThink = content.includes('</think>');
+  const isThinkingIncomplete = hasOpenThink && !hasCloseThink;
+
+  // Check for incomplete tool call
+  const hasOpenTool = content.includes('<!--TOOL_START:');
+  const lastToolEndIndex = content.lastIndexOf('<!--TOOL_END-->');
+  const lastToolStartIndex = content.lastIndexOf('<!--TOOL_START:');
+  const isToolIncomplete = hasOpenTool && lastToolStartIndex > lastToolEndIndex;
+
+  // Pattern for complete blocks only
   const combinedPattern =
     /(<think>([\s\S]*?)<\/think>)|<!--TOOL_START:(\w+):(\{.*?\})-->([\s\S]*?)<!--TOOL_END-->/g;
 
   let lastIndex = 0;
   let match;
+  let currentToolGroup: ToolCall[] = [];
+
+  // Helper to flush tool group
+  const flushToolGroup = (streaming = false) => {
+    if (currentToolGroup.length > 0) {
+      segments.push({
+        type: 'toolGroup',
+        toolCalls: [...currentToolGroup],
+        isStreaming: streaming,
+      });
+      currentToolGroup = [];
+    }
+  };
+
+  // Helper to add text segment
+  const addTextSegment = (text: string, streaming = false) => {
+    const cleaned = cleanTextContent(text);
+    if (cleaned) {
+      flushToolGroup(); // Flush any pending tools before text
+      segments.push({ type: 'text', content: cleaned, isStreaming: streaming });
+    }
+  };
 
   while ((match = combinedPattern.exec(content)) !== null) {
     // Add text before this match
     if (match.index > lastIndex) {
-      const textBefore = cleanTextContent(content.slice(lastIndex, match.index));
-      if (textBefore) {
-        segments.push({ type: 'text', content: textBefore });
-      }
+      addTextSegment(content.slice(lastIndex, match.index));
     }
 
     if (match[1]) {
-      // This is a thinking block
+      // Complete thinking block
+      flushToolGroup();
       const thinkingContent = match[2].trim();
       if (thinkingContent) {
-        segments.push({ type: 'thinking', content: thinkingContent });
+        segments.push({ type: 'thinking', content: thinkingContent, isStreaming: false });
       }
     } else if (match[3]) {
-      // This is a tool call
+      // Complete tool call - add to current group
       const toolName = match[3];
       let args: Record<string, unknown> = {};
       try {
@@ -93,156 +119,74 @@ function parseContentWithToolCalls(content: string): ContentSegment[] {
         // Invalid JSON, use empty args
       }
       const result = match[5].trim();
-
-      segments.push({
-        type: 'tool',
-        toolCall: { toolName, args, result },
-      });
+      currentToolGroup.push({ toolName, args, result });
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text after last match
-  if (lastIndex < content.length) {
-    const remainingText = cleanTextContent(content.slice(lastIndex));
-    if (remainingText) {
-      segments.push({ type: 'text', content: remainingText });
+  // Handle remaining content after last complete match
+  const remaining = content.slice(lastIndex);
+
+  if (isThinkingIncomplete) {
+    // We have an open <think> tag - extract the thinking content
+    flushToolGroup();
+    const thinkStartIndex = remaining.indexOf('<think>');
+    if (thinkStartIndex !== -1) {
+      // Text before <think>
+      const textBefore = remaining.slice(0, thinkStartIndex);
+      addTextSegment(textBefore);
+
+      // Thinking content (everything after <think>)
+      const thinkingContent = remaining.slice(thinkStartIndex + 7).trim();
+      if (thinkingContent) {
+        segments.push({ type: 'thinking', content: thinkingContent, isStreaming: true });
+      } else {
+        // Empty thinking block that just started
+        segments.push({ type: 'thinking', content: '', isStreaming: true });
+      }
     }
+  } else if (isToolIncomplete) {
+    // We have an incomplete tool call
+    // First, add any complete text before the incomplete tool
+    const toolStartMatch = remaining.match(/<!--TOOL_START:(\w+):(\{.*?\})-->/);
+    if (toolStartMatch && toolStartMatch.index !== undefined) {
+      const textBefore = remaining.slice(0, toolStartMatch.index);
+      addTextSegment(textBefore);
+
+      // Parse the incomplete tool call
+      const toolName = toolStartMatch[1];
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(toolStartMatch[2]);
+      } catch {
+        // Invalid JSON
+      }
+      // Result is everything after the start marker (still streaming)
+      const resultStart = toolStartMatch.index + toolStartMatch[0].length;
+      const partialResult = remaining.slice(resultStart).trim();
+
+      currentToolGroup.push({ toolName, args, result: partialResult || 'Loading...' });
+      flushToolGroup(true); // Mark as streaming
+    } else {
+      addTextSegment(remaining, isStreaming);
+    }
+  } else {
+    // No incomplete blocks - just add remaining text
+    addTextSegment(remaining, isStreaming && remaining.length > 0);
   }
 
-  // If no special blocks found, return the whole content as text (cleaned)
-  if (segments.length === 0 && content.trim()) {
-    const cleanedContent = cleanTextContent(content);
-    if (cleanedContent) {
-      segments.push({ type: 'text', content: cleanedContent });
-    }
-  }
+  // Flush any remaining tool group
+  flushToolGroup();
 
   return segments;
 }
 
-/**
- * Grouped segment type - text, thinking block, or group of consecutive tool calls
- */
-interface GroupedSegment {
-  type: 'text' | 'toolGroup' | 'thinking';
-  content?: string;
-  toolCalls?: ToolCall[];
-}
-
-/**
- * Group consecutive tool call segments together, keep thinking blocks separate
- */
-function groupConsecutiveToolCalls(segments: ContentSegment[]): GroupedSegment[] {
-  const grouped: GroupedSegment[] = [];
-  let currentToolGroup: ToolCall[] = [];
-
-  for (const segment of segments) {
-    if (segment.type === 'tool' && segment.toolCall) {
-      // Add to current tool group
-      currentToolGroup.push(segment.toolCall);
-    } else {
-      // Flush any pending tool group before adding other segment
-      if (currentToolGroup.length > 0) {
-        grouped.push({ type: 'toolGroup', toolCalls: currentToolGroup });
-        currentToolGroup = [];
-      }
-
-      if (segment.type === 'thinking' && segment.content) {
-        // Add thinking block as-is
-        grouped.push({ type: 'thinking', content: segment.content });
-      } else if (segment.content) {
-        // Add text segment
-        grouped.push({ type: 'text', content: segment.content });
-      }
-    }
-  }
-
-  // Flush any remaining tool group
-  if (currentToolGroup.length > 0) {
-    grouped.push({ type: 'toolGroup', toolCalls: currentToolGroup });
-  }
-
-  return grouped;
-}
-
-/**
- * Hook that tracks content changes and returns content with fade-in markers for new text
- */
-function useStreamingContent(content: string, isStreaming: boolean) {
-  const [processedContent, setProcessedContent] = useState(content);
-  const prevContentRef = useRef('');
-  const fadeIdRef = useRef(0);
-
-  useEffect(() => {
-    if (!isStreaming) {
-      // When not streaming, just use the content directly (no animation spans)
-      setProcessedContent(content);
-      prevContentRef.current = content;
-      return;
-    }
-
-    const prevContent = prevContentRef.current;
-    const prevLength = prevContent.length;
-    const currentLength = content.length;
-
-    if (currentLength > prevLength) {
-      // New content arrived - wrap it in a fade-in span
-      const existingContent = content.slice(0, prevLength);
-      const newContent = content.slice(prevLength);
-      const fadeId = fadeIdRef.current++;
-
-      // Wrap new content in a span with fade-in class
-      // Use a unique key to force re-render of the animation
-      const wrappedNew = `<span class="${classes.fadeIn}" data-fade-id="${fadeId}">${escapeHtml(newContent)}</span>`;
-
-      setProcessedContent(existingContent + wrappedNew);
-      prevContentRef.current = content;
-    } else if (currentLength < prevLength) {
-      // Content was reset
-      setProcessedContent(content);
-      prevContentRef.current = content;
-      fadeIdRef.current = 0;
-    }
-  }, [content, isStreaming]);
-
-  // When streaming ends, clean up the spans and show plain content
-  useEffect(() => {
-    if (!isStreaming && content) {
-      setProcessedContent(content);
-      prevContentRef.current = content;
-    }
-  }, [isStreaming, content]);
-
-  return processedContent;
-}
-
-/**
- * Escape HTML special characters to prevent XSS
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-/**
- * Strip tool call and thinking markers from content for streaming display
- */
-function stripToolMarkers(content: string): string {
-  return content
-    .replace(/<!--TOOL_START:\w+:\{.*?\}-->/g, '')
-    .replace(/<!--TOOL_END-->/g, '')
-    .replace(/<\/?think>/g, '') // Remove think tags but keep content visible during streaming
-    .replace(/\w+\[ARGS\]\{[^}]*\}/g, '') // Remove text-based tool calls like get_weather[ARGS]{...}
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, ''); // Remove XML-style tool calls
-}
-
 function MarkdownContent({ content }: { content: string }) {
+  if (!content.trim()) {
+    return null;
+  }
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
@@ -392,7 +336,7 @@ function MarkdownContent({ content }: { content: string }) {
         th: ({ children }) => <Table.Th>{children}</Table.Th>,
         td: ({ children }) => <Table.Td>{children}</Table.Td>,
 
-        // Allow the fade-in spans to pass through
+        // Allow custom spans to pass through
         span: ({ className, children }) => <span className={className}>{children}</span>,
       }}
     >
@@ -402,29 +346,34 @@ function MarkdownContent({ content }: { content: string }) {
 }
 
 export function MarkdownMessage({ content, isStreaming = false }: MarkdownMessageProps) {
-  const processedContent = useStreamingContent(content, isStreaming);
+  // Parse content into segments (works for both streaming and complete content)
+  const segments = parseContentRealtime(content, isStreaming);
 
-  // During streaming, just show the raw content (with tool markers stripped)
-  if (isStreaming) {
-    return (
-      <div className={classes.markdown}>
-        <MarkdownContent content={stripToolMarkers(processedContent)} />
-      </div>
-    );
+  // If no segments, show nothing
+  if (segments.length === 0) {
+    return null;
   }
-
-  // When not streaming, parse and render tool calls (grouped)
-  const segments = parseContentWithToolCalls(content);
-  const groupedSegments = groupConsecutiveToolCalls(segments);
 
   return (
     <div className={classes.markdown}>
-      {groupedSegments.map((segment, index) => {
-        if (segment.type === 'thinking' && segment.content) {
-          return <ThinkingBlock key={`thinking-${index}`} content={segment.content} />;
+      {segments.map((segment, index) => {
+        if (segment.type === 'thinking') {
+          return (
+            <ThinkingBlock
+              key={`thinking-${index}`}
+              content={segment.content || ''}
+              isStreaming={segment.isStreaming}
+            />
+          );
         }
         if (segment.type === 'toolGroup' && segment.toolCalls) {
-          return <ToolCallGroup key={`toolgroup-${index}`} toolCalls={segment.toolCalls} />;
+          return (
+            <ToolCallGroup
+              key={`toolgroup-${index}`}
+              toolCalls={segment.toolCalls}
+              isStreaming={segment.isStreaming}
+            />
+          );
         }
         return <MarkdownContent key={`text-${index}`} content={segment.content || ''} />;
       })}

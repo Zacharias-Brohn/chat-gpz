@@ -2,7 +2,16 @@
 
 import { useState } from 'react';
 import { IconChevronDown, IconChevronRight, IconTool } from '@tabler/icons-react';
-import { ActionIcon, Code, Collapse, Group, Paper, Text, useMantineTheme } from '@mantine/core';
+import {
+  ActionIcon,
+  Code,
+  Collapse,
+  Group,
+  Loader,
+  Paper,
+  Text,
+  useMantineTheme,
+} from '@mantine/core';
 import { useThemeContext } from '@/components/DynamicThemeProvider';
 import classes from './ToolCallDisplay.module.css';
 
@@ -21,6 +30,7 @@ interface ToolCallDisplayProps {
 
 interface ToolCallGroupProps {
   toolCalls: ToolCall[];
+  isStreaming?: boolean;
 }
 
 // Friendly tool names
@@ -113,12 +123,26 @@ export function ToolCallDisplay({ toolName, args, result, nested = false }: Tool
 /**
  * Display a group of consecutive tool calls in a single collapsible container
  */
-export function ToolCallGroup({ toolCalls }: ToolCallGroupProps) {
+export function ToolCallGroup({ toolCalls, isStreaming }: ToolCallGroupProps) {
   const [opened, setOpened] = useState(false);
   const { primaryColor } = useThemeContext();
   const theme = useMantineTheme();
 
   if (toolCalls.length === 0) {
+    // If streaming with no calls yet, show loading indicator
+    if (isStreaming) {
+      return (
+        <Paper className={classes.groupContainer} withBorder radius="sm" p="xs" my="xs">
+          <Group gap="xs" wrap="nowrap">
+            <Loader size={14} color={primaryColor} />
+            <IconTool size={16} color={theme.colors[primaryColor][6]} />
+            <Text size="sm" fw={500} c={primaryColor}>
+              Running tool...
+            </Text>
+          </Group>
+        </Paper>
+      );
+    }
     return null;
   }
 
