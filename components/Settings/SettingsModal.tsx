@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   IconAlertCircle,
   IconDownload,
   IconPalette,
+  IconRefresh,
   IconRobot,
   IconTrash,
   IconUser,
@@ -30,27 +31,18 @@ import {
   Text,
   TextInput,
   Title,
+  Tooltip,
   useCombobox,
   useMantineTheme,
 } from '@mantine/core';
 import { deleteModel, getInstalledModels, pullModel, type OllamaModel } from '@/app/actions/ollama';
 
-/*
- * Popular models list - reserved for future autocomplete feature
- * const POPULAR_MODELS = [
- *   'llama3.2',
- *   'llama3.1',
- *   'mistral',
- *   'gemma2',
- *   'qwen2.5',
- *   'phi3.5',
- *   'neural-chat',
- *   'starling-lm',
- *   'codellama',
- *   'deepseek-coder',
- *   'llava',
- * ];
- */
+// Type for the scraped models JSON
+interface OllamaModelsData {
+  generatedAt: string;
+  modelCount: number;
+  models: Record<string, string[]>;
+}
 
 interface User {
   id: string;
@@ -64,6 +56,10 @@ interface SettingsModalProps {
   primaryColor: string;
   setPrimaryColor: (color: string) => void;
 }
+
+// Session-level cache for available models (survives modal close/open)
+let availableModelsCache: OllamaModelsData | null = null;
+let installedModelsCache: OllamaModel[] | null = null;
 
 export function SettingsModal({
   opened,
@@ -83,42 +79,123 @@ export function SettingsModal({
   const [loading, setLoading] = useState(false);
 
   // Models State
-  const [models, setModels] = useState<OllamaModel[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
+  const [installedModels, setInstalledModels] = useState<OllamaModel[]>(installedModelsCache || []);
+  const [availableModels, setAvailableModels] = useState<OllamaModelsData | null>(
+    availableModelsCache
+  );
+  const [loadingInstalled, setLoadingInstalled] = useState(false);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [pullingModel, setPullingModel] = useState<string | null>(null);
-  const [newModelName, setNewModelName] = useState('');
+  const [pullError, setPullError] = useState('');
 
-  // Combobox State
-  const [search, setSearch] = useState('');
-  const combobox = useCombobox({
+  // Selected model and tag for downloading
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedTag, setSelectedTag] = useState<string>('');
+
+  // Combobox states
+  const [modelSearch, setModelSearch] = useState('');
+  const [tagSearch, setTagSearch] = useState('');
+
+  const modelCombobox = useCombobox({
     onDropdownClose: () => {
-      combobox.resetSelectedOption();
-      combobox.focusTarget();
-      setSearch('');
+      modelCombobox.resetSelectedOption();
+      modelCombobox.focusTarget();
+      setModelSearch('');
     },
     onDropdownOpen: () => {
-      combobox.focusSearchInput();
+      modelCombobox.focusSearchInput();
     },
   });
 
-  // Filter installed models based on search
-  const options = models
-    .filter((item) => item.name.toLowerCase().includes(search.toLowerCase().trim()))
-    .map((item) => (
-      <Combobox.Option value={item.name} key={item.digest}>
-        {item.name}
-      </Combobox.Option>
-    ));
+  const tagCombobox = useCombobox({
+    onDropdownClose: () => {
+      tagCombobox.resetSelectedOption();
+      tagCombobox.focusTarget();
+      setTagSearch('');
+    },
+    onDropdownOpen: () => {
+      tagCombobox.focusSearchInput();
+    },
+  });
+
+  // Track if we've fetched this session
+  const hasFetchedInstalled = useRef(false);
+  const hasFetchedAvailable = useRef(false);
+
+  // Get list of model names for the dropdown
+  const modelNames = availableModels ? Object.keys(availableModels.models).sort() : [];
+
+  // Filter models based on search
+  const filteredModels = modelNames.filter((name) =>
+    name.toLowerCase().includes(modelSearch.toLowerCase().trim())
+  );
+
+  // Get tags for the selected model
+  const availableTags =
+    selectedModel && availableModels ? availableModels.models[selectedModel] || [] : [];
+
+  // Filter tags based on search
+  const filteredTags = availableTags.filter((tag) =>
+    tag.toLowerCase().includes(tagSearch.toLowerCase().trim())
+  );
+
+  // Fetch available models from the static JSON
+  const fetchAvailableModels = useCallback(async (force = false) => {
+    if (!force && availableModelsCache) {
+      setAvailableModels(availableModelsCache);
+      return;
+    }
+
+    setLoadingAvailable(true);
+    try {
+      const response = await fetch('/ollama-models.json');
+      if (response.ok) {
+        const data: OllamaModelsData = await response.json();
+        availableModelsCache = data;
+        setAvailableModels(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch available models:', e);
+    } finally {
+      setLoadingAvailable(false);
+    }
+  }, []);
+
+  // Fetch installed models from Ollama
+  const fetchInstalledModels = useCallback(async (force = false) => {
+    if (!force && installedModelsCache) {
+      setInstalledModels(installedModelsCache);
+      return;
+    }
+
+    setLoadingInstalled(true);
+    try {
+      const list = await getInstalledModels();
+      installedModelsCache = list;
+      setInstalledModels(list);
+    } catch (e) {
+      console.error('Failed to fetch installed models:', e);
+    } finally {
+      setLoadingInstalled(false);
+    }
+  }, []);
 
   // Check login status on mount
   useEffect(() => {
     if (opened) {
       fetchUser();
       if (activeTab === 'models') {
-        fetchModels();
+        if (!hasFetchedInstalled.current) {
+          fetchInstalledModels();
+          hasFetchedInstalled.current = true;
+        }
+        if (!hasFetchedAvailable.current) {
+          fetchAvailableModels();
+          hasFetchedAvailable.current = true;
+        }
       }
     }
-  }, [opened, activeTab]);
+  }, [opened, activeTab, fetchInstalledModels, fetchAvailableModels]);
 
   const fetchUser = async () => {
     try {
@@ -130,55 +207,48 @@ export function SettingsModal({
         setUser(null);
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error(e);
-    }
-  };
-
-  const fetchModels = async () => {
-    setLoadingModels(true);
-    try {
-      const list = await getInstalledModels();
-      setModels(list);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error(e);
-    } finally {
-      setLoadingModels(false);
     }
   };
 
   const handlePullModel = async () => {
-    if (!newModelName) {
+    if (!selectedModel) {
       return;
     }
-    setPullingModel(newModelName);
+
+    // Build the full model name with tag
+    const fullModelName = selectedTag ? `${selectedModel}:${selectedTag}` : selectedModel;
+
+    setPullingModel(fullModelName);
+    setPullError('');
+
     try {
-      const result = await pullModel(newModelName);
+      const result = await pullModel(fullModelName);
       if (result.success) {
-        setNewModelName('');
-        await fetchModels();
+        setSelectedModel('');
+        setSelectedTag('');
+        // Force refresh installed models
+        await fetchInstalledModels(true);
       } else {
-        setError(result.message);
+        setPullError(result.message);
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error(e);
+      setPullError('An error occurred while pulling the model');
     } finally {
       setPullingModel(null);
     }
   };
 
   const handleDeleteModel = async (name: string) => {
-    // eslint-disable-next-line no-alert
     if (!confirm(`Are you sure you want to delete ${name}?`)) {
       return;
     }
     try {
       await deleteModel(name);
-      await fetchModels();
+      // Force refresh installed models
+      await fetchInstalledModels(true);
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error(e);
     }
   };
@@ -230,7 +300,6 @@ export function SettingsModal({
           body: JSON.stringify({ accentColor: color }),
         });
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error('Failed to save accent color:', e);
       }
     }
@@ -239,6 +308,13 @@ export function SettingsModal({
   const colors = Object.keys(theme.colors).filter(
     (color) => color !== 'dark' && color !== 'gray' && color !== 'white' && color !== 'black'
   );
+
+  // When model selection changes, reset tag
+  const handleModelSelect = (model: string) => {
+    setSelectedModel(model);
+    setSelectedTag('');
+    modelCombobox.closeDropdown();
+  };
 
   return (
     <Modal
@@ -336,19 +412,66 @@ export function SettingsModal({
             <>
               <Title order={4}>Models</Title>
               <Text size="sm" c="dimmed">
-                Manage your local AI models via Ollama.
+                Download and manage AI models from the Ollama registry.
               </Text>
               <Divider my="sm" />
 
-              <Group align="flex-end">
+              {/* Model Selection */}
+              <Text size="sm" fw={500} mb="xs">
+                Download New Model
+              </Text>
+
+              <Group align="flex-end" gap="sm">
+                {/* Model Name Dropdown */}
                 <Combobox
-                  store={combobox}
+                  store={modelCombobox}
+                  withinPortal={false}
+                  onOptionSubmit={handleModelSelect}
+                >
+                  <Combobox.Target>
+                    <InputBase
+                      component="button"
+                      type="button"
+                      pointer
+                      rightSection={loadingAvailable ? <Loader size={14} /> : <Combobox.Chevron />}
+                      onClick={() => modelCombobox.toggleDropdown()}
+                      rightSectionPointerEvents="none"
+                      label="Model"
+                      style={{ minWidth: 180 }}
+                    >
+                      {selectedModel || <Input.Placeholder>Select model</Input.Placeholder>}
+                    </InputBase>
+                  </Combobox.Target>
+
+                  <Combobox.Dropdown>
+                    <Combobox.Search
+                      value={modelSearch}
+                      onChange={(event) => setModelSearch(event.currentTarget.value)}
+                      placeholder="Search models..."
+                    />
+                    <Combobox.Options>
+                      <ScrollArea.Autosize type="scroll" mah={200}>
+                        {filteredModels.length > 0 ? (
+                          filteredModels.map((name) => (
+                            <Combobox.Option value={name} key={name}>
+                              {name}
+                            </Combobox.Option>
+                          ))
+                        ) : (
+                          <Combobox.Empty>No models found</Combobox.Empty>
+                        )}
+                      </ScrollArea.Autosize>
+                    </Combobox.Options>
+                  </Combobox.Dropdown>
+                </Combobox>
+
+                {/* Tag/Quantization Dropdown */}
+                <Combobox
+                  store={tagCombobox}
                   withinPortal={false}
                   onOptionSubmit={(val) => {
-                    setNewModelName(val);
-                    combobox.closeDropdown();
-                    // Optional: trigger pull immediately or let user click button?
-                    // User code sample sets value. I'll set newModelName.
+                    setSelectedTag(val);
+                    tagCombobox.closeDropdown();
                   }}
                 >
                   <Combobox.Target>
@@ -357,33 +480,38 @@ export function SettingsModal({
                       type="button"
                       pointer
                       rightSection={<Combobox.Chevron />}
-                      onClick={() => combobox.toggleDropdown()}
+                      onClick={() => tagCombobox.toggleDropdown()}
                       rightSectionPointerEvents="none"
-                      label="Download Model"
-                      description="Select an installed model to update, or type a new model name (e.g. llama3)"
-                      style={{ flex: 1 }}
+                      label="Tag"
+                      disabled={!selectedModel}
+                      style={{ minWidth: 180 }}
                     >
-                      {newModelName || (
-                        <Input.Placeholder>Pick or type model name</Input.Placeholder>
+                      {selectedTag || (
+                        <Input.Placeholder>
+                          {selectedModel ? 'Select tag (optional)' : 'Select model first'}
+                        </Input.Placeholder>
                       )}
                     </InputBase>
                   </Combobox.Target>
 
                   <Combobox.Dropdown>
                     <Combobox.Search
-                      value={search}
-                      onChange={(event) => {
-                        setSearch(event.currentTarget.value);
-                        setNewModelName(event.currentTarget.value); // Allow typing new names
-                      }}
-                      placeholder="Search installed models or type new one"
+                      value={tagSearch}
+                      onChange={(event) => setTagSearch(event.currentTarget.value)}
+                      placeholder="Search tags..."
                     />
                     <Combobox.Options>
-                      {options.length > 0 ? (
-                        options
-                      ) : (
-                        <Combobox.Empty>No matching installed models</Combobox.Empty>
-                      )}
+                      <ScrollArea.Autosize type="scroll" mah={200}>
+                        {filteredTags.length > 0 ? (
+                          filteredTags.map((tag) => (
+                            <Combobox.Option value={tag} key={tag}>
+                              {tag}
+                            </Combobox.Option>
+                          ))
+                        ) : (
+                          <Combobox.Empty>No tags found</Combobox.Empty>
+                        )}
+                      </ScrollArea.Autosize>
                     </Combobox.Options>
                   </Combobox.Dropdown>
                 </Combobox>
@@ -391,6 +519,7 @@ export function SettingsModal({
                 <Button
                   onClick={handlePullModel}
                   loading={!!pullingModel}
+                  disabled={!selectedModel}
                   leftSection={<IconDownload size={16} />}
                   color={primaryColor}
                 >
@@ -404,22 +533,49 @@ export function SettingsModal({
                 </Alert>
               )}
 
-              <Text size="sm" fw={500} mt="xl" mb="xs">
-                Installed Models
-              </Text>
+              {pullError && (
+                <Alert
+                  icon={<IconAlertCircle size={16} />}
+                  title="Error"
+                  color="red"
+                  mt="md"
+                  withCloseButton
+                  onClose={() => setPullError('')}
+                >
+                  {pullError}
+                </Alert>
+              )}
 
-              {loadingModels ? (
+              {/* Installed Models */}
+              <Group justify="space-between" mt="xl" mb="xs">
+                <Text size="sm" fw={500}>
+                  Installed Models
+                </Text>
+                <Tooltip label="Refresh">
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    onClick={() => fetchInstalledModels(true)}
+                    loading={loadingInstalled}
+                  >
+                    <IconRefresh size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+
+              {loadingInstalled && installedModels.length === 0 ? (
                 <Group justify="center" py="xl">
                   <Loader size="sm" />
                 </Group>
-              ) : models.length === 0 ? (
+              ) : installedModels.length === 0 ? (
                 <Text c="dimmed" size="sm" ta="center" py="xl">
-                  No models found. Try pulling one!
+                  No models installed. Pull one from above!
                 </Text>
               ) : (
-                <ScrollArea h={300} offsetScrollbars>
+                <ScrollArea h={200} offsetScrollbars>
                   <Stack gap="xs">
-                    {models.map((model) => (
+                    {installedModels.map((model) => (
                       <Card key={model.digest} withBorder padding="sm" radius="md">
                         <Group justify="space-between">
                           <div>
@@ -450,6 +606,13 @@ export function SettingsModal({
                     ))}
                   </Stack>
                 </ScrollArea>
+              )}
+
+              {availableModels && (
+                <Text size="xs" c="dimmed" mt="md">
+                  Model list last updated:{' '}
+                  {new Date(availableModels.generatedAt).toLocaleDateString()}
+                </Text>
               )}
             </>
           )}
