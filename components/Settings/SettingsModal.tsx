@@ -38,10 +38,15 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { deleteModel, getInstalledModels, pullModel, type OllamaModel } from '@/app/actions/ollama';
 
 // Type for the scraped models JSON
+interface ModelInfo {
+  tags: string[];
+  capabilities: string[];
+}
+
 interface OllamaModelsData {
   generatedAt: string;
   modelCount: number;
-  models: Record<string, string[]>;
+  models: Record<string, ModelInfo>;
 }
 
 interface User {
@@ -540,17 +545,41 @@ export function SettingsModal({
                           }}
                         >
                           {paginatedModels.map((modelName) => {
-                            const tags = availableModels?.models[modelName] || [];
+                            const modelInfo = availableModels?.models[modelName];
+                            const tags = modelInfo?.tags || [];
+                            const capabilities = modelInfo?.capabilities || [];
                             const installedTags = getInstalledTags(modelName);
 
                             return (
                               <Accordion.Item key={modelName} value={modelName}>
                                 <Accordion.Control>
-                                  <Group justify="space-between" pr="sm">
-                                    <Text fw={500} size="sm">
-                                      {modelName}
-                                    </Text>
-                                    <Group gap="xs">
+                                  <Group justify="space-between" pr="sm" wrap="nowrap">
+                                    <Group gap="xs" wrap="nowrap">
+                                      <Text fw={500} size="sm">
+                                        {modelName}
+                                      </Text>
+                                      {capabilities.map((cap) => (
+                                        <Badge
+                                          key={cap}
+                                          size="xs"
+                                          variant="light"
+                                          color={
+                                            cap === 'vision'
+                                              ? 'violet'
+                                              : cap === 'tools'
+                                                ? 'blue'
+                                                : cap === 'thinking'
+                                                  ? 'orange'
+                                                  : cap === 'embedding'
+                                                    ? 'teal'
+                                                    : 'gray'
+                                          }
+                                        >
+                                          {cap}
+                                        </Badge>
+                                      ))}
+                                    </Group>
+                                    <Group gap="xs" wrap="nowrap">
                                       <Badge size="xs" variant="light" color="gray">
                                         {tags.length} tags
                                       </Badge>

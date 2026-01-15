@@ -14,29 +14,45 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const OLLAMA_LIBRARY_URL = 'https://ollama.com/library';
 
 /**
- * Fetches the list of all available model names from Ollama's library page
+ * Fetches the list of all available models with their capabilities from Ollama's library page
+ * @returns {Promise<Array<{name: string, capabilities: string[]}>>}
  */
-async function fetchModelNames() {
+async function fetchModelsWithCapabilities() {
   console.log('Fetching model list from Ollama library...');
   const response = await fetch(OLLAMA_LIBRARY_URL);
   const html = await response.text();
 
-  // Extract model names using regex (matches href="/library/modelname")
-  const modelRegex = /href="\/library\/([^"\/]+)"/g;
-  const models = new Set();
-  let match;
+  // Parse models and their capabilities from the HTML
+  // Each model is in a <li x-test-model> block
+  const modelBlocks = html.split('<li x-test-model');
+  const models = [];
 
-  while ((match = modelRegex.exec(html)) !== null) {
-    // Filter out non-model links (like "tags" subpages)
-    const name = match[1];
-    if (name && !name.includes('/') && !name.includes(':')) {
-      models.add(name);
+  for (let i = 1; i < modelBlocks.length; i++) {
+    const block = modelBlocks[i];
+
+    // Extract model name from href="/library/modelname"
+    const nameMatch = block.match(/href="\/library\/([^"\/]+)"/);
+    if (!nameMatch) continue;
+
+    const name = nameMatch[1];
+    if (name.includes('/') || name.includes(':')) continue;
+
+    // Extract capabilities from x-test-capability spans
+    const capabilities = [];
+    const capabilityRegex = /x-test-capability[^>]*>([^<]+)</g;
+    let capMatch;
+    while ((capMatch = capabilityRegex.exec(block)) !== null) {
+      const cap = capMatch[1].trim().toLowerCase();
+      if (cap && !capabilities.includes(cap)) {
+        capabilities.push(cap);
+      }
     }
+
+    models.push({ name, capabilities });
   }
 
-  const modelList = Array.from(models);
-  console.log(`Found ${modelList.length} models`);
-  return modelList;
+  console.log(`Found ${models.length} models`);
+  return models;
 }
 
 /**
@@ -70,25 +86,28 @@ async function fetchModelTags(modelName) {
 async function main() {
   const startTime = Date.now();
 
-  // Fetch all model names
-  const modelNames = await fetchModelNames();
+  // Fetch all models with their capabilities
+  const modelList = await fetchModelsWithCapabilities();
 
   // Fetch tags for each model (with concurrency limit to be nice to the server)
   const CONCURRENCY = 5;
   const models = {};
 
-  for (let i = 0; i < modelNames.length; i += CONCURRENCY) {
-    const batch = modelNames.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < modelList.length; i += CONCURRENCY) {
+    const batch = modelList.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
-      batch.map(async (name) => {
+      batch.map(async ({ name, capabilities }) => {
         const tags = await fetchModelTags(name);
-        return { name, tags };
+        return { name, tags, capabilities };
       })
     );
 
-    for (const { name, tags } of results) {
-      models[name] = tags;
-      console.log(`  ${name}: ${tags.length} tags`);
+    for (const { name, tags, capabilities } of results) {
+      models[name] = {
+        tags,
+        capabilities,
+      };
+      console.log(`  ${name}: ${tags.length} tags, capabilities: [${capabilities.join(', ')}]`);
     }
   }
 
