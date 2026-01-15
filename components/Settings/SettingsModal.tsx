@@ -553,32 +553,41 @@ export function SettingsModal({
                             return (
                               <Accordion.Item key={modelName} value={modelName}>
                                 <Accordion.Control>
-                                  <Group justify="space-between" pr="sm" wrap="nowrap">
-                                    <Group gap="xs" wrap="nowrap">
+                                  <Group
+                                    justify="space-between"
+                                    pr="sm"
+                                    wrap="nowrap"
+                                    align="flex-start"
+                                  >
+                                    <div>
                                       <Text fw={500} size="sm">
                                         {modelName}
                                       </Text>
-                                      {capabilities.map((cap) => (
-                                        <Badge
-                                          key={cap}
-                                          size="xs"
-                                          variant="light"
-                                          color={
-                                            cap === 'vision'
-                                              ? 'violet'
-                                              : cap === 'tools'
-                                                ? 'blue'
-                                                : cap === 'thinking'
-                                                  ? 'orange'
-                                                  : cap === 'embedding'
-                                                    ? 'teal'
-                                                    : 'gray'
-                                          }
-                                        >
-                                          {cap}
-                                        </Badge>
-                                      ))}
-                                    </Group>
+                                      {capabilities.length > 0 && (
+                                        <Group gap="xs" mt={4}>
+                                          {capabilities.map((cap) => (
+                                            <Badge
+                                              key={cap}
+                                              size="xs"
+                                              variant="light"
+                                              color={
+                                                cap === 'vision'
+                                                  ? 'violet'
+                                                  : cap === 'tools'
+                                                    ? 'blue'
+                                                    : cap === 'thinking'
+                                                      ? 'orange'
+                                                      : cap === 'embedding'
+                                                        ? 'teal'
+                                                        : 'gray'
+                                              }
+                                            >
+                                              {cap}
+                                            </Badge>
+                                          ))}
+                                        </Group>
+                                      )}
+                                    </div>
                                     <Group gap="xs" wrap="nowrap">
                                       <Badge size="xs" variant="light" color="gray">
                                         {tags.length} tags
