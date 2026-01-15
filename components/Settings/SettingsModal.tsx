@@ -523,7 +523,22 @@ export function SettingsModal({
                       </Group>
                     ) : (
                       <>
-                        <Accordion variant="separated" radius="md">
+                        <Accordion
+                          variant="separated"
+                          radius="md"
+                          styles={{
+                            item: {
+                              border: '1px solid var(--mantine-color-default-border)',
+                              backgroundColor: 'var(--mantine-color-body)',
+                            },
+                            control: {
+                              padding: 'var(--mantine-spacing-sm)',
+                            },
+                            label: {
+                              padding: 0,
+                            },
+                          }}
+                        >
                           {paginatedModels.map((modelName) => {
                             const tags = availableModels?.models[modelName] || [];
                             const installedTags = getInstalledTags(modelName);
