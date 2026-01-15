@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconAlertCircle,
+  IconBrain,
+  IconCode,
   IconDownload,
+  IconEye,
   IconPalette,
   IconRefresh,
   IconRobot,
   IconSearch,
+  IconTool,
   IconTrash,
   IconUser,
   IconX,
@@ -17,6 +21,7 @@ import {
   Badge,
   Button,
   Card,
+  Chip,
   ColorSwatch,
   Divider,
   Group,
@@ -97,6 +102,9 @@ export function SettingsModal({
   const [modelSearch, setModelSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(modelSearch, 200);
 
+  // Capability filter state
+  const [selectedCapabilities, setSelectedCapabilities] = useState<string[]>([]);
+
   // Pagination state
   const MODELS_PER_PAGE = 20;
   const [currentPage, setCurrentPage] = useState(1);
@@ -111,13 +119,25 @@ export function SettingsModal({
     [availableModels]
   );
 
-  // Filter models based on debounced search
+  // Filter models based on debounced search and selected capabilities
   const filteredModels = useMemo(
     () =>
-      modelNames.filter((name) =>
-        name.toLowerCase().includes(debouncedSearch.toLowerCase().trim())
-      ),
-    [modelNames, debouncedSearch]
+      modelNames.filter((name) => {
+        // Text search filter
+        const matchesSearch = name.toLowerCase().includes(debouncedSearch.toLowerCase().trim());
+        if (!matchesSearch) {
+          return false;
+        }
+
+        // Capability filter - if any capabilities selected, model must have ALL of them
+        if (selectedCapabilities.length > 0) {
+          const modelCaps = availableModels?.models[name]?.capabilities || [];
+          return selectedCapabilities.every((cap) => modelCaps.includes(cap));
+        }
+
+        return true;
+      }),
+    [modelNames, debouncedSearch, selectedCapabilities, availableModels]
   );
 
   // Paginated models - only render what's visible
@@ -127,10 +147,10 @@ export function SettingsModal({
     return filteredModels.slice(start, start + MODELS_PER_PAGE);
   }, [filteredModels, currentPage]);
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, selectedCapabilities]);
 
   // Fetch available models from the static JSON
   const fetchAvailableModels = useCallback(async (force = false) => {
@@ -312,6 +332,12 @@ export function SettingsModal({
       });
   };
 
+  // Get capabilities for an installed model by extracting base name
+  const getModelCapabilities = (fullModelName: string): string[] => {
+    const [baseName] = fullModelName.split(':');
+    return availableModels?.models[baseName]?.capabilities || [];
+  };
+
   return (
     <Modal
       opened={opened}
@@ -464,35 +490,62 @@ export function SettingsModal({
                       </Card>
                     ) : (
                       <Stack gap="xs">
-                        {installedModels.map((model) => (
-                          <Card key={model.digest} withBorder padding="sm" radius="md">
-                            <Group justify="space-between">
-                              <div>
-                                <Text fw={500} size="sm">
-                                  {model.name}
-                                </Text>
-                                <Group gap="xs" mt={4}>
-                                  <Badge size="xs" variant="light" color="gray">
-                                    {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB
-                                  </Badge>
-                                  <Badge size="xs" variant="light" color="blue">
-                                    {model.details.parameter_size}
-                                  </Badge>
-                                  <Badge size="xs" variant="light" color="orange">
-                                    {model.details.quantization_level}
-                                  </Badge>
-                                </Group>
-                              </div>
-                              <ActionIcon
-                                color="red"
-                                variant="subtle"
-                                onClick={() => handleDeleteModel(model.name)}
-                              >
-                                <IconTrash size={16} />
-                              </ActionIcon>
-                            </Group>
-                          </Card>
-                        ))}
+                        {installedModels.map((model) => {
+                          const capabilities = getModelCapabilities(model.name);
+                          return (
+                            <Card key={model.digest} withBorder padding="sm" radius="md">
+                              <Group justify="space-between">
+                                <div>
+                                  <Text fw={500} size="sm">
+                                    {model.name}
+                                  </Text>
+                                  <Group gap="xs" mt={4}>
+                                    <Badge size="xs" variant="light" color="gray">
+                                      {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB
+                                    </Badge>
+                                    <Badge size="xs" variant="light" color="blue">
+                                      {model.details.parameter_size}
+                                    </Badge>
+                                    <Badge size="xs" variant="light" color="orange">
+                                      {model.details.quantization_level}
+                                    </Badge>
+                                  </Group>
+                                  {capabilities.length > 0 && (
+                                    <Group gap="xs" mt={4}>
+                                      {capabilities.map((cap) => (
+                                        <Badge
+                                          key={cap}
+                                          size="xs"
+                                          variant="light"
+                                          color={
+                                            cap === 'vision'
+                                              ? 'violet'
+                                              : cap === 'tools'
+                                                ? 'blue'
+                                                : cap === 'thinking'
+                                                  ? 'orange'
+                                                  : cap === 'embedding'
+                                                    ? 'teal'
+                                                    : 'gray'
+                                          }
+                                        >
+                                          {cap}
+                                        </Badge>
+                                      ))}
+                                    </Group>
+                                  )}
+                                </div>
+                                <ActionIcon
+                                  color="red"
+                                  variant="subtle"
+                                  onClick={() => handleDeleteModel(model.name)}
+                                >
+                                  <IconTrash size={16} />
+                                </ActionIcon>
+                              </Group>
+                            </Card>
+                          );
+                        })}
                       </Stack>
                     )}
                   </div>
@@ -519,8 +572,127 @@ export function SettingsModal({
                       leftSection={<IconSearch size={16} />}
                       value={modelSearch}
                       onChange={(e) => setModelSearch(e.currentTarget.value)}
-                      mb="sm"
+                      mb="xs"
                     />
+
+                    {/* Capability Filter */}
+                    <Chip.Group
+                      multiple
+                      value={selectedCapabilities}
+                      onChange={setSelectedCapabilities}
+                    >
+                      <Group
+                        gap={0}
+                        mb="sm"
+                        style={{
+                          backgroundColor: 'var(--mantine-color-default-hover)',
+                          borderRadius: 'var(--mantine-radius-xl)',
+                          padding: rem(4),
+                          border: '1px solid var(--mantine-color-default-border)',
+                        }}
+                      >
+                        <Chip
+                          value="vision"
+                          variant="filled"
+                          radius="xl"
+                          size="xs"
+                          styles={{
+                            label: {
+                              paddingLeft: rem(10),
+                              paddingRight: rem(10),
+                              background: selectedCapabilities.includes('vision')
+                                ? 'linear-gradient(135deg, var(--mantine-color-violet-5), var(--mantine-color-grape-5))'
+                                : 'transparent',
+                              border: 'none',
+                              color: selectedCapabilities.includes('vision')
+                                ? 'white'
+                                : 'var(--mantine-color-dimmed)',
+                            },
+                            iconWrapper: { display: 'none' },
+                          }}
+                        >
+                          <Group gap={4} wrap="nowrap">
+                            <IconEye size={12} />
+                            Vision
+                          </Group>
+                        </Chip>
+                        <Chip
+                          value="tools"
+                          variant="filled"
+                          radius="xl"
+                          size="xs"
+                          styles={{
+                            label: {
+                              paddingLeft: rem(10),
+                              paddingRight: rem(10),
+                              background: selectedCapabilities.includes('tools')
+                                ? 'linear-gradient(135deg, var(--mantine-color-blue-5), var(--mantine-color-cyan-5))'
+                                : 'transparent',
+                              border: 'none',
+                              color: selectedCapabilities.includes('tools')
+                                ? 'white'
+                                : 'var(--mantine-color-dimmed)',
+                            },
+                            iconWrapper: { display: 'none' },
+                          }}
+                        >
+                          <Group gap={4} wrap="nowrap">
+                            <IconTool size={12} />
+                            Tools
+                          </Group>
+                        </Chip>
+                        <Chip
+                          value="thinking"
+                          variant="filled"
+                          radius="xl"
+                          size="xs"
+                          styles={{
+                            label: {
+                              paddingLeft: rem(10),
+                              paddingRight: rem(10),
+                              background: selectedCapabilities.includes('thinking')
+                                ? 'linear-gradient(135deg, var(--mantine-color-orange-5), var(--mantine-color-yellow-5))'
+                                : 'transparent',
+                              border: 'none',
+                              color: selectedCapabilities.includes('thinking')
+                                ? 'white'
+                                : 'var(--mantine-color-dimmed)',
+                            },
+                            iconWrapper: { display: 'none' },
+                          }}
+                        >
+                          <Group gap={4} wrap="nowrap">
+                            <IconBrain size={12} />
+                            Thinking
+                          </Group>
+                        </Chip>
+                        <Chip
+                          value="embedding"
+                          variant="filled"
+                          radius="xl"
+                          size="xs"
+                          styles={{
+                            label: {
+                              paddingLeft: rem(10),
+                              paddingRight: rem(10),
+                              background: selectedCapabilities.includes('embedding')
+                                ? 'linear-gradient(135deg, var(--mantine-color-teal-5), var(--mantine-color-green-5))'
+                                : 'transparent',
+                              border: 'none',
+                              color: selectedCapabilities.includes('embedding')
+                                ? 'white'
+                                : 'var(--mantine-color-dimmed)',
+                            },
+                            iconWrapper: { display: 'none' },
+                          }}
+                        >
+                          <Group gap={4} wrap="nowrap">
+                            <IconCode size={12} />
+                            Embedding
+                          </Group>
+                        </Chip>
+                      </Group>
+                    </Chip.Group>
 
                     {loadingAvailable ? (
                       <Group justify="center" py="md">
