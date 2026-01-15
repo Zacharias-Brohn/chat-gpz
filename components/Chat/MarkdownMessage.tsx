@@ -219,14 +219,14 @@ function MarkdownContent({ content }: { content: string }) {
           </Title>
         ),
         h6: ({ children }) => (
-          <Text size="sm" fw={700} mb="xs">
+          <Text size="md" fw={700} mb="xs">
             {children}
           </Text>
         ),
 
         // Paragraphs and text
         p: ({ children }) => (
-          <Text size="sm" style={{ lineHeight: 1.6, marginBottom: '0.5em' }}>
+          <Text size="md" style={{ lineHeight: 1.6, marginBottom: '0.5em' }}>
             {children}
           </Text>
         ),
@@ -267,13 +267,13 @@ function MarkdownContent({ content }: { content: string }) {
             return <ul className={classes.taskList}>{children}</ul>;
           }
           return (
-            <List size="sm" mb="xs">
+            <List size="md" mb="xs">
               {children}
             </List>
           );
         },
         ol: ({ children }) => (
-          <List type="ordered" size="sm" mb="xs">
+          <List type="ordered" size="md" mb="xs">
             {children}
           </List>
         ),

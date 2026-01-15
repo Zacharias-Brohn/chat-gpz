@@ -878,9 +878,8 @@ export default function ChatLayout() {
 
         <AppShell.Main>
           <Container
-            size="lg"
             h="calc(100vh - 100px)"
-            style={{ display: 'flex', flexDirection: 'column' }}
+            style={{ display: 'flex', flexDirection: 'column', maxWidth: 800 }}
           >
             <ScrollArea
               flex={1}
@@ -925,7 +924,7 @@ export default function ChatLayout() {
                           maxWidth: '75%',
                         }}
                       >
-                        <Text size="sm" style={{ lineHeight: 1.5 }}>
+                        <Text size="md" style={{ lineHeight: 1.5 }}>
                           {message.content}
                         </Text>
                       </Paper>
