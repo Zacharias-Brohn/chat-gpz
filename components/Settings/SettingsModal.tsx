@@ -529,7 +529,7 @@ export function SettingsModal({
                           styles={{
                             item: {
                               border: '1px solid var(--mantine-color-default-border)',
-                              backgroundColor: 'var(--mantine-color-body)',
+                              backgroundColor: 'var(--mantine-color-default)',
                             },
                             control: {
                               padding: 'var(--mantine-spacing-sm)',
