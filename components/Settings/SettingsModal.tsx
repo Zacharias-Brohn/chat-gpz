@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconAlertCircle,
-  IconChevronDown,
-  IconChevronRight,
   IconDownload,
   IconPalette,
   IconRefresh,
@@ -13,19 +11,19 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import {
+  Accordion,
   ActionIcon,
   Alert,
   Badge,
-  Box,
   Button,
   Card,
-  Collapse,
   ColorSwatch,
   Divider,
   Group,
   Loader,
   Modal,
   NavLink,
+  Pagination,
   PasswordInput,
   rem,
   ScrollArea,
@@ -36,6 +34,7 @@ import {
   Tooltip,
   useMantineTheme,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { deleteModel, getInstalledModels, pullModel, type OllamaModel } from '@/app/actions/ollama';
 
 // Type for the scraped models JSON
@@ -89,23 +88,44 @@ export function SettingsModal({
   const [pullingModel, setPullingModel] = useState<string | null>(null);
   const [pullError, setPullError] = useState('');
 
-  // Expanded model card state
-  const [expandedModel, setExpandedModel] = useState<string | null>(null);
-
-  // Search state for available models
+  // Search state for available models (with debounce for performance)
   const [modelSearch, setModelSearch] = useState('');
+  const [debouncedSearch] = useDebouncedValue(modelSearch, 200);
+
+  // Pagination state
+  const MODELS_PER_PAGE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Track if we've fetched this session
   const hasFetchedInstalled = useRef(false);
   const hasFetchedAvailable = useRef(false);
 
   // Get list of model names sorted alphabetically
-  const modelNames = availableModels ? Object.keys(availableModels.models).sort() : [];
-
-  // Filter models based on search
-  const filteredModels = modelNames.filter((name) =>
-    name.toLowerCase().includes(modelSearch.toLowerCase().trim())
+  const modelNames = useMemo(
+    () => (availableModels ? Object.keys(availableModels.models).sort() : []),
+    [availableModels]
   );
+
+  // Filter models based on debounced search
+  const filteredModels = useMemo(
+    () =>
+      modelNames.filter((name) =>
+        name.toLowerCase().includes(debouncedSearch.toLowerCase().trim())
+      ),
+    [modelNames, debouncedSearch]
+  );
+
+  // Paginated models - only render what's visible
+  const totalPages = Math.ceil(filteredModels.length / MODELS_PER_PAGE);
+  const paginatedModels = useMemo(() => {
+    const start = (currentPage - 1) * MODELS_PER_PAGE;
+    return filteredModels.slice(start, start + MODELS_PER_PAGE);
+  }, [filteredModels, currentPage]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
 
   // Fetch available models from the static JSON
   const fetchAvailableModels = useCallback(async (force = false) => {
@@ -270,10 +290,6 @@ export function SettingsModal({
   const colors = Object.keys(theme.colors).filter(
     (color) => color !== 'dark' && color !== 'gray' && color !== 'white' && color !== 'black'
   );
-
-  const toggleModelExpand = (modelName: string) => {
-    setExpandedModel(expandedModel === modelName ? null : modelName);
-  };
 
   // Check if a model (base name) is already installed
   // Returns list of installed tags for the given model name
@@ -486,7 +502,9 @@ export function SettingsModal({
                       </Text>
                       {availableModels && (
                         <Text size="xs" c="dimmed">
-                          {modelNames.length} models
+                          {filteredModels.length === modelNames.length
+                            ? `${modelNames.length} models`
+                            : `${filteredModels.length} of ${modelNames.length} models`}
                         </Text>
                       )}
                     </Group>
@@ -504,48 +522,32 @@ export function SettingsModal({
                         <Loader size="sm" />
                       </Group>
                     ) : (
-                      <Stack gap="xs">
-                        {filteredModels.map((modelName) => {
-                          const tags = availableModels?.models[modelName] || [];
-                          const isExpanded = expandedModel === modelName;
-                          const installedTags = getInstalledTags(modelName);
+                      <>
+                        <Accordion variant="separated" radius="md">
+                          {paginatedModels.map((modelName) => {
+                            const tags = availableModels?.models[modelName] || [];
+                            const installedTags = getInstalledTags(modelName);
 
-                          return (
-                            <Card key={modelName} withBorder padding={0} radius="md">
-                              {/* Model Header - Clickable */}
-                              <Box
-                                p="sm"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => toggleModelExpand(modelName)}
-                              >
-                                <Group justify="space-between">
-                                  <Group gap="sm">
-                                    {isExpanded ? (
-                                      <IconChevronDown size={16} />
-                                    ) : (
-                                      <IconChevronRight size={16} />
-                                    )}
+                            return (
+                              <Accordion.Item key={modelName} value={modelName}>
+                                <Accordion.Control>
+                                  <Group justify="space-between" pr="sm">
                                     <Text fw={500} size="sm">
                                       {modelName}
                                     </Text>
-                                  </Group>
-                                  <Group gap="xs">
-                                    <Badge size="xs" variant="light" color="gray">
-                                      {tags.length} tags
-                                    </Badge>
-                                    {installedTags.length > 0 && (
-                                      <Badge size="xs" variant="light" color="green">
-                                        {installedTags.length} installed
+                                    <Group gap="xs">
+                                      <Badge size="xs" variant="light" color="gray">
+                                        {tags.length} tags
                                       </Badge>
-                                    )}
+                                      {installedTags.length > 0 && (
+                                        <Badge size="xs" variant="light" color="green">
+                                          {installedTags.length} installed
+                                        </Badge>
+                                      )}
+                                    </Group>
                                   </Group>
-                                </Group>
-                              </Box>
-
-                              {/* Expanded Tags List */}
-                              <Collapse in={isExpanded}>
-                                <Divider />
-                                <Box p="sm" bg="var(--mantine-color-gray-light)">
+                                </Accordion.Control>
+                                <Accordion.Panel>
                                   <Stack gap="xs">
                                     {tags.map((tag) => {
                                       const isInstalled = installedTags.includes(tag);
@@ -577,18 +579,29 @@ export function SettingsModal({
                                       );
                                     })}
                                   </Stack>
-                                </Box>
-                              </Collapse>
-                            </Card>
-                          );
-                        })}
+                                </Accordion.Panel>
+                              </Accordion.Item>
+                            );
+                          })}
+                        </Accordion>
 
-                        {filteredModels.length === 0 && modelSearch && (
+                        {filteredModels.length === 0 && debouncedSearch && (
                           <Text c="dimmed" size="sm" ta="center" py="md">
-                            No models found matching &quot;{modelSearch}&quot;
+                            No models found matching &quot;{debouncedSearch}&quot;
                           </Text>
                         )}
-                      </Stack>
+
+                        {totalPages > 1 && (
+                          <Group justify="center" mt="md">
+                            <Pagination
+                              total={totalPages}
+                              value={currentPage}
+                              onChange={setCurrentPage}
+                              size="sm"
+                            />
+                          </Group>
+                        )}
+                      </>
                     )}
 
                     {availableModels && (
