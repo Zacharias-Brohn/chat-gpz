@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   IconAlertCircle,
+  IconChevronDown,
+  IconChevronRight,
   IconDownload,
   IconPalette,
   IconRefresh,
   IconRobot,
+  IconSearch,
   IconTrash,
   IconUser,
   IconX,
@@ -13,14 +16,13 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Card,
+  Collapse,
   ColorSwatch,
-  Combobox,
   Divider,
   Group,
-  Input,
-  InputBase,
   Loader,
   Modal,
   NavLink,
@@ -32,7 +34,6 @@ import {
   TextInput,
   Title,
   Tooltip,
-  useCombobox,
   useMantineTheme,
 } from '@mantine/core';
 import { deleteModel, getInstalledModels, pullModel, type OllamaModel } from '@/app/actions/ollama';
@@ -88,55 +89,22 @@ export function SettingsModal({
   const [pullingModel, setPullingModel] = useState<string | null>(null);
   const [pullError, setPullError] = useState('');
 
-  // Selected model and tag for downloading
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [selectedTag, setSelectedTag] = useState<string>('');
+  // Expanded model card state
+  const [expandedModel, setExpandedModel] = useState<string | null>(null);
 
-  // Combobox states
+  // Search state for available models
   const [modelSearch, setModelSearch] = useState('');
-  const [tagSearch, setTagSearch] = useState('');
-
-  const modelCombobox = useCombobox({
-    onDropdownClose: () => {
-      modelCombobox.resetSelectedOption();
-      modelCombobox.focusTarget();
-      setModelSearch('');
-    },
-    onDropdownOpen: () => {
-      modelCombobox.focusSearchInput();
-    },
-  });
-
-  const tagCombobox = useCombobox({
-    onDropdownClose: () => {
-      tagCombobox.resetSelectedOption();
-      tagCombobox.focusTarget();
-      setTagSearch('');
-    },
-    onDropdownOpen: () => {
-      tagCombobox.focusSearchInput();
-    },
-  });
 
   // Track if we've fetched this session
   const hasFetchedInstalled = useRef(false);
   const hasFetchedAvailable = useRef(false);
 
-  // Get list of model names for the dropdown
+  // Get list of model names sorted alphabetically
   const modelNames = availableModels ? Object.keys(availableModels.models).sort() : [];
 
   // Filter models based on search
   const filteredModels = modelNames.filter((name) =>
     name.toLowerCase().includes(modelSearch.toLowerCase().trim())
-  );
-
-  // Get tags for the selected model
-  const availableTags =
-    selectedModel && availableModels ? availableModels.models[selectedModel] || [] : [];
-
-  // Filter tags based on search
-  const filteredTags = availableTags.filter((tag) =>
-    tag.toLowerCase().includes(tagSearch.toLowerCase().trim())
   );
 
   // Fetch available models from the static JSON
@@ -211,13 +179,8 @@ export function SettingsModal({
     }
   };
 
-  const handlePullModel = async () => {
-    if (!selectedModel) {
-      return;
-    }
-
-    // Build the full model name with tag
-    const fullModelName = selectedTag ? `${selectedModel}:${selectedTag}` : selectedModel;
+  const handlePullModel = async (modelName: string, tag: string) => {
+    const fullModelName = `${modelName}:${tag}`;
 
     setPullingModel(fullModelName);
     setPullError('');
@@ -225,8 +188,6 @@ export function SettingsModal({
     try {
       const result = await pullModel(fullModelName);
       if (result.success) {
-        setSelectedModel('');
-        setSelectedTag('');
         // Force refresh installed models
         await fetchInstalledModels(true);
       } else {
@@ -241,6 +202,7 @@ export function SettingsModal({
   };
 
   const handleDeleteModel = async (name: string) => {
+    // eslint-disable-next-line no-alert
     if (!confirm(`Are you sure you want to delete ${name}?`)) {
       return;
     }
@@ -309,11 +271,24 @@ export function SettingsModal({
     (color) => color !== 'dark' && color !== 'gray' && color !== 'white' && color !== 'black'
   );
 
-  // When model selection changes, reset tag
-  const handleModelSelect = (model: string) => {
-    setSelectedModel(model);
-    setSelectedTag('');
-    modelCombobox.closeDropdown();
+  const toggleModelExpand = (modelName: string) => {
+    setExpandedModel(expandedModel === modelName ? null : modelName);
+  };
+
+  // Check if a model (base name) is already installed
+  // Returns list of installed tags for the given model name
+  const getInstalledTags = (modelName: string): string[] => {
+    return installedModels
+      .filter((m) => {
+        // Handle both "modelName:tag" and "modelName" (defaults to "latest")
+        const [baseName] = m.name.split(':');
+        return baseName === modelName;
+      })
+      .map((m) => {
+        const parts = m.name.split(':');
+        // If no tag specified, it's "latest"
+        return parts.length > 1 ? parts[1] : 'latest';
+      });
   };
 
   return (
@@ -321,11 +296,11 @@ export function SettingsModal({
       opened={opened}
       onClose={close}
       withCloseButton={false}
-      size="lg"
+      size="xl"
       padding={0}
       radius="xl"
     >
-      <Group align="stretch" gap={0} style={{ minHeight: 400, overflow: 'hidden' }}>
+      <Group align="stretch" gap={0} style={{ minHeight: 600, overflow: 'hidden' }}>
         {/* Left Sidebar */}
         <Stack
           gap="xs"
@@ -366,7 +341,7 @@ export function SettingsModal({
         </Stack>
 
         {/* Right Content */}
-        <Stack p="xl" style={{ flex: 1, position: 'relative' }}>
+        <Stack p="xl" style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <ActionIcon
             onClick={close}
             variant="subtle"
@@ -409,136 +384,19 @@ export function SettingsModal({
           )}
 
           {activeTab === 'models' && (
-            <>
-              <Title order={4}>Models</Title>
-              <Text size="sm" c="dimmed">
-                Download and manage AI models from the Ollama registry.
-              </Text>
-              <Divider my="sm" />
-
-              {/* Model Selection */}
-              <Text size="sm" fw={500} mb="xs">
-                Download New Model
-              </Text>
-
-              <Group align="flex-end" gap="sm">
-                {/* Model Name Dropdown */}
-                <Combobox
-                  store={modelCombobox}
-                  withinPortal={false}
-                  onOptionSubmit={handleModelSelect}
-                >
-                  <Combobox.Target>
-                    <InputBase
-                      component="button"
-                      type="button"
-                      pointer
-                      rightSection={loadingAvailable ? <Loader size={14} /> : <Combobox.Chevron />}
-                      onClick={() => modelCombobox.toggleDropdown()}
-                      rightSectionPointerEvents="none"
-                      label="Model"
-                      style={{ minWidth: 180 }}
-                    >
-                      {selectedModel || <Input.Placeholder>Select model</Input.Placeholder>}
-                    </InputBase>
-                  </Combobox.Target>
-
-                  <Combobox.Dropdown>
-                    <Combobox.Search
-                      value={modelSearch}
-                      onChange={(event) => setModelSearch(event.currentTarget.value)}
-                      placeholder="Search models..."
-                    />
-                    <Combobox.Options>
-                      <ScrollArea.Autosize type="scroll" mah={200}>
-                        {filteredModels.length > 0 ? (
-                          filteredModels.map((name) => (
-                            <Combobox.Option value={name} key={name}>
-                              {name}
-                            </Combobox.Option>
-                          ))
-                        ) : (
-                          <Combobox.Empty>No models found</Combobox.Empty>
-                        )}
-                      </ScrollArea.Autosize>
-                    </Combobox.Options>
-                  </Combobox.Dropdown>
-                </Combobox>
-
-                {/* Tag/Quantization Dropdown */}
-                <Combobox
-                  store={tagCombobox}
-                  withinPortal={false}
-                  onOptionSubmit={(val) => {
-                    setSelectedTag(val);
-                    tagCombobox.closeDropdown();
-                  }}
-                >
-                  <Combobox.Target>
-                    <InputBase
-                      component="button"
-                      type="button"
-                      pointer
-                      rightSection={<Combobox.Chevron />}
-                      onClick={() => tagCombobox.toggleDropdown()}
-                      rightSectionPointerEvents="none"
-                      label="Tag"
-                      disabled={!selectedModel}
-                      style={{ minWidth: 180 }}
-                    >
-                      {selectedTag || (
-                        <Input.Placeholder>
-                          {selectedModel ? 'Select tag (optional)' : 'Select model first'}
-                        </Input.Placeholder>
-                      )}
-                    </InputBase>
-                  </Combobox.Target>
-
-                  <Combobox.Dropdown>
-                    <Combobox.Search
-                      value={tagSearch}
-                      onChange={(event) => setTagSearch(event.currentTarget.value)}
-                      placeholder="Search tags..."
-                    />
-                    <Combobox.Options>
-                      <ScrollArea.Autosize type="scroll" mah={200}>
-                        {filteredTags.length > 0 ? (
-                          filteredTags.map((tag) => (
-                            <Combobox.Option value={tag} key={tag}>
-                              {tag}
-                            </Combobox.Option>
-                          ))
-                        ) : (
-                          <Combobox.Empty>No tags found</Combobox.Empty>
-                        )}
-                      </ScrollArea.Autosize>
-                    </Combobox.Options>
-                  </Combobox.Dropdown>
-                </Combobox>
-
-                <Button
-                  onClick={handlePullModel}
-                  loading={!!pullingModel}
-                  disabled={!selectedModel}
-                  leftSection={<IconDownload size={16} />}
-                  color={primaryColor}
-                >
-                  Pull
-                </Button>
-              </Group>
-
-              {pullingModel && (
-                <Alert icon={<Loader size={16} />} title="Downloading..." color="blue" mt="md">
-                  Pulling {pullingModel}. This may take a while depending on your connection.
-                </Alert>
-              )}
+            <Stack gap="md" style={{ flex: 1, overflow: 'hidden' }}>
+              <div>
+                <Title order={4}>Models</Title>
+                <Text size="sm" c="dimmed">
+                  Download and manage AI models from the Ollama registry.
+                </Text>
+              </div>
 
               {pullError && (
                 <Alert
                   icon={<IconAlertCircle size={16} />}
                   title="Error"
                   color="red"
-                  mt="md"
                   withCloseButton
                   onClose={() => setPullError('')}
                 >
@@ -546,75 +404,203 @@ export function SettingsModal({
                 </Alert>
               )}
 
-              {/* Installed Models */}
-              <Group justify="space-between" mt="xl" mb="xs">
-                <Text size="sm" fw={500}>
-                  Installed Models
-                </Text>
-                <Tooltip label="Refresh">
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="sm"
-                    onClick={() => fetchInstalledModels(true)}
-                    loading={loadingInstalled}
-                  >
-                    <IconRefresh size={16} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
+              {pullingModel && (
+                <Alert icon={<Loader size={16} />} title="Downloading..." color="blue">
+                  Pulling {pullingModel}. This may take a while.
+                </Alert>
+              )}
 
-              {loadingInstalled && installedModels.length === 0 ? (
-                <Group justify="center" py="xl">
-                  <Loader size="sm" />
-                </Group>
-              ) : installedModels.length === 0 ? (
-                <Text c="dimmed" size="sm" ta="center" py="xl">
-                  No models installed. Pull one from above!
-                </Text>
-              ) : (
-                <ScrollArea h={200} offsetScrollbars>
-                  <Stack gap="xs">
-                    {installedModels.map((model) => (
-                      <Card key={model.digest} withBorder padding="sm" radius="md">
-                        <Group justify="space-between">
-                          <div>
-                            <Text fw={500} size="sm">
-                              {model.name}
-                            </Text>
-                            <Group gap="xs">
-                              <Badge size="xs" variant="light" color="gray">
-                                {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB
-                              </Badge>
-                              <Badge size="xs" variant="light" color="blue">
-                                {model.details.parameter_size}
-                              </Badge>
-                              <Badge size="xs" variant="light" color="orange">
-                                {model.details.quantization_level}
-                              </Badge>
-                            </Group>
-                          </div>
-                          <ActionIcon
-                            color="red"
-                            variant="subtle"
-                            onClick={() => handleDeleteModel(model.name)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
+              <ScrollArea style={{ flex: 1 }} offsetScrollbars>
+                <Stack gap="lg">
+                  {/* Installed Models Section */}
+                  <div>
+                    <Group justify="space-between" mb="xs">
+                      <Text size="sm" fw={600}>
+                        Installed Models
+                      </Text>
+                      <Tooltip label="Refresh">
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          onClick={() => fetchInstalledModels(true)}
+                          loading={loadingInstalled}
+                        >
+                          <IconRefresh size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+
+                    {loadingInstalled && installedModels.length === 0 ? (
+                      <Group justify="center" py="md">
+                        <Loader size="sm" />
+                      </Group>
+                    ) : installedModels.length === 0 ? (
+                      <Card withBorder padding="md" radius="md">
+                        <Text c="dimmed" size="sm" ta="center">
+                          No models installed yet. Browse available models below.
+                        </Text>
                       </Card>
-                    ))}
-                  </Stack>
-                </ScrollArea>
-              )}
+                    ) : (
+                      <Stack gap="xs">
+                        {installedModels.map((model) => (
+                          <Card key={model.digest} withBorder padding="sm" radius="md">
+                            <Group justify="space-between">
+                              <div>
+                                <Text fw={500} size="sm">
+                                  {model.name}
+                                </Text>
+                                <Group gap="xs" mt={4}>
+                                  <Badge size="xs" variant="light" color="gray">
+                                    {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB
+                                  </Badge>
+                                  <Badge size="xs" variant="light" color="blue">
+                                    {model.details.parameter_size}
+                                  </Badge>
+                                  <Badge size="xs" variant="light" color="orange">
+                                    {model.details.quantization_level}
+                                  </Badge>
+                                </Group>
+                              </div>
+                              <ActionIcon
+                                color="red"
+                                variant="subtle"
+                                onClick={() => handleDeleteModel(model.name)}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Group>
+                          </Card>
+                        ))}
+                      </Stack>
+                    )}
+                  </div>
 
-              {availableModels && (
-                <Text size="xs" c="dimmed" mt="md">
-                  Model list last updated:{' '}
-                  {new Date(availableModels.generatedAt).toLocaleDateString()}
-                </Text>
-              )}
-            </>
+                  <Divider />
+
+                  {/* Available Models Section */}
+                  <div>
+                    <Group justify="space-between" mb="xs">
+                      <Text size="sm" fw={600}>
+                        Available Models
+                      </Text>
+                      {availableModels && (
+                        <Text size="xs" c="dimmed">
+                          {modelNames.length} models
+                        </Text>
+                      )}
+                    </Group>
+
+                    <TextInput
+                      placeholder="Search models..."
+                      leftSection={<IconSearch size={16} />}
+                      value={modelSearch}
+                      onChange={(e) => setModelSearch(e.currentTarget.value)}
+                      mb="sm"
+                    />
+
+                    {loadingAvailable ? (
+                      <Group justify="center" py="md">
+                        <Loader size="sm" />
+                      </Group>
+                    ) : (
+                      <Stack gap="xs">
+                        {filteredModels.map((modelName) => {
+                          const tags = availableModels?.models[modelName] || [];
+                          const isExpanded = expandedModel === modelName;
+                          const installedTags = getInstalledTags(modelName);
+
+                          return (
+                            <Card key={modelName} withBorder padding={0} radius="md">
+                              {/* Model Header - Clickable */}
+                              <Box
+                                p="sm"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => toggleModelExpand(modelName)}
+                              >
+                                <Group justify="space-between">
+                                  <Group gap="sm">
+                                    {isExpanded ? (
+                                      <IconChevronDown size={16} />
+                                    ) : (
+                                      <IconChevronRight size={16} />
+                                    )}
+                                    <Text fw={500} size="sm">
+                                      {modelName}
+                                    </Text>
+                                  </Group>
+                                  <Group gap="xs">
+                                    <Badge size="xs" variant="light" color="gray">
+                                      {tags.length} tags
+                                    </Badge>
+                                    {installedTags.length > 0 && (
+                                      <Badge size="xs" variant="light" color="green">
+                                        {installedTags.length} installed
+                                      </Badge>
+                                    )}
+                                  </Group>
+                                </Group>
+                              </Box>
+
+                              {/* Expanded Tags List */}
+                              <Collapse in={isExpanded}>
+                                <Divider />
+                                <Box p="sm" bg="var(--mantine-color-gray-light)">
+                                  <Stack gap="xs">
+                                    {tags.map((tag) => {
+                                      const isInstalled = installedTags.includes(tag);
+                                      const isPulling = pullingModel === `${modelName}:${tag}`;
+
+                                      return (
+                                        <Group key={tag} justify="space-between">
+                                          <Text size="sm" c={isInstalled ? 'dimmed' : undefined}>
+                                            {modelName}:{tag}
+                                          </Text>
+                                          {isInstalled ? (
+                                            <Badge size="xs" variant="light" color="green">
+                                              Installed
+                                            </Badge>
+                                          ) : (
+                                            <Button
+                                              size="xs"
+                                              variant="light"
+                                              color={primaryColor}
+                                              leftSection={<IconDownload size={14} />}
+                                              onClick={() => handlePullModel(modelName, tag)}
+                                              loading={isPulling}
+                                              disabled={!!pullingModel}
+                                            >
+                                              Download
+                                            </Button>
+                                          )}
+                                        </Group>
+                                      );
+                                    })}
+                                  </Stack>
+                                </Box>
+                              </Collapse>
+                            </Card>
+                          );
+                        })}
+
+                        {filteredModels.length === 0 && modelSearch && (
+                          <Text c="dimmed" size="sm" ta="center" py="md">
+                            No models found matching &quot;{modelSearch}&quot;
+                          </Text>
+                        )}
+                      </Stack>
+                    )}
+
+                    {availableModels && (
+                      <Text size="xs" c="dimmed" mt="md">
+                        Model list updated:{' '}
+                        {new Date(availableModels.generatedAt).toLocaleDateString()}
+                      </Text>
+                    )}
+                  </div>
+                </Stack>
+              </ScrollArea>
+            </Stack>
           )}
 
           {activeTab === 'account' && (
